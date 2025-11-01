@@ -21,10 +21,11 @@
 <script type="text/babel">
     const { useEffect, useRef, useState, useMemo } = React;
 
+    // Utility functions
     const hexToRgb = (hex) => {
         const h = hex.replace('#','');
         const bigint = parseInt(h.length === 3 ? h.split('').map(c=>c+c).join('') : h, 16);
-        return { r: (bigint >> 16) & 255, g: (bigint >> 8) & 255, b: bigint & 255 };
+        return { r: (bigint >> 16) & 255, g: (bigint >> 8) & 255, b: (bigint >> 0) & 255 };
     };
     const rgbToHex = ({r,g,b}) => '#' + [r,g,b].map(v => v.toString(16).padStart(2,'0')).join('');
     const lerp = (a,b,t) => a + (b-a)*t;
@@ -37,9 +38,101 @@
         neutral: '#d4d4d4',
         yellow: '#facc15',
         red: '#ef4444',
+        green: '#22c55e', // Tailwind green-500
     };
 
+    // ----------- STUN connectivity indicator hook -------------
+    function useStunIndicator() {
+        const [status, setStatus] = useState('green');
+        const issuesRef = useRef([]);
+
+        useEffect(() => {
+            let running = true;
+            let waiting = false;
+            let timerId;
+
+            function sendStunRequest() {
+                if (!running) return;
+                if (waiting) return;
+
+                waiting = true;
+                const sentAt = Date.now();
+                let resolved = false;
+
+                // Use WebRTC to send a STUN packet and measure response time
+                const pc = new RTCPeerConnection({
+                    iceServers: [{ urls: "stun:stun.l.google.com:19302" }]
+                });
+
+                let timeoutId = setTimeout(() => {
+                    if (!resolved) {
+                        recordIssue("timeout");
+                        cleanup();
+                    }
+                }, 3000);
+
+                function recordIssue(type) {
+                    const now = Date.now();
+                    issuesRef.current.push({ t: now, type });
+                }
+
+                function cleanup() {
+                    resolved = true;
+                    clearTimeout(timeoutId);
+                    pc.close();
+                    waiting = false;
+                }
+
+                pc.onicecandidate = (event) => {
+                    if (!event.candidate) return;
+                    const now = Date.now();
+                    const latency = now - sentAt;
+                    if (latency > 80) {
+                        recordIssue("high-latency");
+                    }
+                    cleanup();
+                };
+
+                // Start ICE gathering
+                pc.createDataChannel("ping");
+                pc.createOffer()
+                    .then(offer => pc.setLocalDescription(offer))
+                    .catch(() => {
+                        recordIssue("error");
+                        cleanup();
+                    });
+            }
+
+            function checkIssues() {
+                const now = Date.now();
+                // Only keep issues within last 60 seconds
+                issuesRef.current = issuesRef.current.filter(issue => now - issue.t < 60000);
+                const numIssues = issuesRef.current.length;
+                if (numIssues > 4) setStatus('red');
+                else if (numIssues > 2) setStatus('yellow');
+                else setStatus('green');
+            }
+
+            function loop() {
+                if (!running) return;
+                sendStunRequest();
+                checkIssues();
+                timerId = setTimeout(loop, 1000);
+            }
+            loop();
+
+            return () => {
+                running = false;
+                clearTimeout(timerId);
+            };
+        }, []);
+
+        return status;
+    }
+    // ----------------------------------------------------------
+
     function App() {
+        // Existing stopwatch & countdown code
         const [swRunning, setSwRunning] = useState(false);
         const [swElapsed, setSwElapsed] = useState(0);
         const swStartRef = useRef(0);
@@ -65,7 +158,6 @@
             setSwRunning(false);
             setSwElapsed(0);
         };
-        // Restart: Zero the stopwatch and keep it running
         const restartStopwatch = () => {
             swStartRef.current = Date.now();
             setSwElapsed(0);
@@ -75,7 +167,6 @@
             }
         };
 
-        // Change color only after 10 minutes
         const thresholdStartMs = 10 * 60 * 1000;
         const thresholdEndMs = 15 * 60 * 1000;
         const swColor = useMemo(() => {
@@ -177,6 +268,14 @@
         const btnRed = "px-3 py-2 rounded-xl bg-red-700 text-neutral-100 border border-red-800 hover:bg-red-600 transition disabled:opacity-50 disabled:cursor-not-allowed";
         const field = "w-16 px-2 py-2 rounded-lg bg-neutral-900 text-neutral-100 border border-neutral-800 outline-none text-center";
 
+        // Connectivity indicator logic
+        const stunStatus = useStunIndicator();
+        const indicatorColor = {
+            green: COLORS.green,
+            yellow: COLORS.yellow,
+            red: COLORS.red,
+        }[stunStatus];
+
         return (
             <div className="h-full w-full flex items-stretch justify-center">
                 <main className="w-full md:w-[33vw] max-w-[640px] px-4 md:px-6 py-6 flex flex-col gap-6">
@@ -184,14 +283,11 @@
                         <header className="flex items-center justify-between mb-3">
                             <h2 className="text-neutral-300 font-semibold">Countdown</h2>
                             <div className="flex items-center gap-2">
-                                <input aria-label="Hours" className={field} inputMode="numeric" value={cdInputs.h} onChange={(e) => setCdInputs((p) => ({ ...p, h: e.target.value.replace(/[^0-9]/g, "") }))}
-                                />
+                                <input aria-label="Hours" className={field} inputMode="numeric" value={cdInputs.h} onChange={(e) => setCdInputs((p) => ({ ...p, h: e.target.value.replace(/[^0-9]/g, "") }))} />
                                 <span className="text-neutral-600">:</span>
-                                <input aria-label="Minutes" className={field} inputMode="numeric" value={cdInputs.m} onChange={(e) => setCdInputs((p) => ({ ...p, m: e.target.value.replace(/[^0-9]/g, "") }))}
-                                />
+                                <input aria-label="Minutes" className={field} inputMode="numeric" value={cdInputs.m} onChange={(e) => setCdInputs((p) => ({ ...p, m: e.target.value.replace(/[^0-9]/g, "") }))} />
                                 <span className="text-neutral-600">:</span>
-                                <input aria-label="Seconds" className={field} inputMode="numeric" value={cdInputs.s} onChange={(e) => setCdInputs((p) => ({ ...p, s: e.target.value.replace(/[^0-9]/g, "") }))}
-                                />
+                                <input aria-label="Seconds" className={field} inputMode="numeric" value={cdInputs.s} onChange={(e) => setCdInputs((p) => ({ ...p, s: e.target.value.replace(/[^0-9]/g, "") }))} />
                                 <button className={btn} onClick={setCountdownValue} disabled={cdRunning}>Set</button>
                             </div>
                         </header>
@@ -237,6 +333,36 @@
                         </footer>
                     </section>
                 </main>
+                {/* Connectivity indicator */}
+                <div style={{
+                    position: "fixed",
+                    bottom: "20px",
+                    left: 0,
+                    width: "100%",
+                    display: "flex",
+                    justifyContent: "center",
+                    pointerEvents: "none",
+                    zIndex: 50,
+                }}>
+                    <span
+                        style={{
+                            width: "18px",
+                            height: "18px",
+                            borderRadius: "9999px",
+                            background: indicatorColor,
+                            border: "2px solid #222",
+                            boxShadow: "0 2px 8px rgba(0,0,0,0.2)",
+                            display: "inline-block",
+                        }}
+                        title={
+                            stunStatus === "green"
+                                ? "Internet connectivity is good"
+                                : stunStatus === "yellow"
+                                    ? "Some connectivity issues detected"
+                                    : "Connectivity issues detected"
+                        }
+                    />
+                </div>
             </div>
         );
     }
