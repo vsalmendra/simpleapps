@@ -1,0 +1,332 @@
+<!-- Santander statement processor -->
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Santander statement processor</title>
+
+    <!-- React (CDN) -->
+    <script crossorigin src="https://unpkg.com/react@18/umd/react.development.js"></script>
+    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+
+    <style>
+        :root { color-scheme: light; }
+        body { font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif; margin: 0; background: #f6f7f9; color: #111; }
+        .wrap { max-width: 1100px; margin: 24px auto; padding: 0 16px 40px; }
+        h1 { font-size: 20px; margin: 0 0 16px; }
+        .card { background: #fff; border: 1px solid #e6e8ee; border-radius: 12px; padding: 16px; box-shadow: 0 1px 2px rgba(0,0,0,.04); }
+        .stack { display: grid; gap: 14px; }
+        label { display: block; font-weight: 600; margin-bottom: 8px; }
+        textarea {
+            width: 100%;
+            min-height: 180px;
+            resize: vertical;
+            padding: 10px 12px;
+            border-radius: 10px;
+            border: 1px solid #d7dbe6;
+            outline: none;
+            font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+            font-size: 13px;
+            line-height: 1.35;
+        }
+        textarea:focus { border-color: #7aa7ff; box-shadow: 0 0 0 3px rgba(122,167,255,.25); }
+        .row { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
+        button {
+            border: 1px solid #cfd5e5;
+            background: #fff;
+            padding: 8px 12px;
+            border-radius: 10px;
+            cursor: pointer;
+            font-weight: 600;
+        }
+        button.primary { background: #111; color: #fff; border-color: #111; }
+        button:disabled { opacity: .5; cursor: not-allowed; }
+        .hint { font-size: 12px; color: #5a6478; margin-top: 6px; }
+        .err { font-size: 12px; color: #b42318; }
+        table { width: 100%; border-collapse: collapse; }
+        th, td { border-bottom: 1px solid #edf0f6; padding: 8px 10px; text-align: left; vertical-align: top; }
+        th { font-size: 12px; color: #4b5568; background: #fafbfe; }
+        td { font-size: 13px; }
+        .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace; }
+        .pill { display: inline-block; padding: 2px 8px; border-radius: 999px; border: 1px solid #e6e8ee; font-size: 12px; color: #4b5568; background: #fff; }
+        .spacer { height: 4px; }
+    </style>
+</head>
+
+<body>
+<div class="wrap">
+    <h1>Santander statement processor</h1>
+    <div id="root"></div>
+</div>
+
+<script type="text/babel">
+    const { useMemo, useState } = React;
+
+    function normalizeHeader(s) {
+        return (s ?? "")
+            .replace(/\u00A0/g, " ")
+            .trim()
+            .toUpperCase();
+    }
+
+    function splitColumns(line) {
+        const raw = (line ?? "").replace(/\r/g, "");
+        if (raw.includes("\t")) {
+            return raw.split("\t").map(c => c.replace(/\u00A0/g, " ").trim());
+        }
+        // Fallback if tabs were converted to spaces:
+        return raw.split(/ {2,}/).map(c => c.replace(/\u00A0/g, " ").trim());
+    }
+
+    function toISODate(ddmmyyyy) {
+        const s = (ddmmyyyy ?? "").trim();
+        const m = /^(\d{2})\/(\d{2})\/(\d{4})$/.exec(s);
+        if (!m) return "";
+        const [, dd, mm, yyyy] = m;
+        return `${yyyy}-${mm}-${dd}`;
+    }
+
+    // Remove thousands separators (dots/commas/spaces/NBSP/etc), assume 2 decimals,
+    // add a dot before the two rightmost digits.
+    function normalizeMoney(input) {
+        if (input == null) return "";
+        let s = String(input)
+            .replace(/\u00A0/g, "")   // NBSP
+            .replace(/\s+/g, "")     // any whitespace
+            .trim();
+
+        if (!s) return "";
+
+        const isNegative = s.includes("-");
+
+        // Keep digits only
+        let digits = s.replace(/[^\d]/g, "");
+        if (!digits) return "";
+
+        // Ensure at least 3 digits so we can insert decimal point safely
+        if (digits.length < 3) digits = digits.padStart(3, "0");
+
+        let intPart = digits.slice(0, -2).replace(/^0+(?=\d)/, "");
+        if (intPart === "") intPart = "0";
+        const decPart = digits.slice(-2);
+
+        return (isNegative ? "-" : "") + intPart + "." + decPart;
+    }
+
+    function tsvLine(cells) {
+        return cells.map(v => (v ?? "").toString()).join("\t");
+    }
+
+    function App() {
+        const [input, setInput] = useState("");
+        const [error, setError] = useState("");
+        const [summary, setSummary] = useState(null); // { Data, Saldo }
+        const [rows, setRows] = useState([]);         // transformed rows
+
+        const hasResult = useMemo(() => !!summary || rows.length > 0, [summary, rows]);
+
+        function processStatement() {
+            setError("");
+            setSummary(null);
+            setRows([]);
+
+            const text = (input ?? "").replace(/\r/g, "").trim();
+            if (!text) {
+                setError("Paste a Santander statement first.");
+                return;
+            }
+
+            const lines = text.split("\n").map(l => l.trimEnd()).filter(l => l.trim() !== "");
+            if (lines.length < 2) {
+                setError("Could not find header + data rows.");
+                return;
+            }
+
+            const headerCols = splitColumns(lines[0]).map(normalizeHeader);
+            const headerIndex = new Map(headerCols.map((h, i) => [h, i]));
+
+            const H_FECHA_OP = "FECHA OPERACIÓN";
+            const H_CONCEPTO = "CONCEPTO";
+            const H_IMPORTE = "IMPORTE EUR";
+            const H_SALDO = "SALDO";
+
+            const required = [H_FECHA_OP, H_CONCEPTO, H_IMPORTE, H_SALDO];
+            for (const h of required) {
+                if (!headerIndex.has(h)) {
+                    setError(`Missing required column: "${h}"`);
+                    return;
+                }
+            }
+
+            const data = [];
+            for (let i = 1; i < lines.length; i++) {
+                const cols = splitColumns(lines[i]);
+                if (cols.length < headerCols.length) continue;
+
+                const fechaOp = cols[headerIndex.get(H_FECHA_OP)] ?? "";
+                const concepto = cols[headerIndex.get(H_CONCEPTO)] ?? "";
+                const importe = cols[headerIndex.get(H_IMPORTE)] ?? "";
+                const saldo = cols[headerIndex.get(H_SALDO)] ?? "";
+
+                data.push({
+                    fechaOpISO: toISODate(fechaOp),
+                    concepto: concepto.trim(),
+                    importeNorm: normalizeMoney(importe),
+                    saldoNorm: normalizeMoney(saldo),
+                });
+            }
+
+            if (data.length === 0) {
+                setError("No data rows found.");
+                return;
+            }
+
+            // Second field: first data row's date + saldo
+            setSummary({
+                Data: data[0].fechaOpISO,
+                Saldo: data[0].saldoNorm,
+            });
+
+            // Third field: transformations + reverse row order
+            const transformed = data
+                .map(r => ({
+                    Categoria: "",
+                    Data: r.fechaOpISO,
+                    Importe: r.importeNorm,
+                    Motivo: "",
+                    DatosBanco: r.concepto,
+                }))
+                .reverse();
+
+            setRows(transformed);
+        }
+
+        async function copyText(text) {
+            try {
+                await navigator.clipboard.writeText(text);
+            } catch {
+                // Fallback
+                const ta = document.createElement("textarea");
+                ta.value = text;
+                ta.style.position = "fixed";
+                ta.style.left = "-9999px";
+                document.body.appendChild(ta);
+                ta.focus();
+                ta.select();
+                document.execCommand("copy");
+                document.body.removeChild(ta);
+            }
+        }
+
+        function copySummaryTSV() {
+            if (!summary) return;
+            copyText(tsvLine([summary.Data, summary.Saldo]));
+        }
+
+        function copyTableTSV() {
+            if (!rows.length) return;
+            const lines = rows.map(r => tsvLine([r.Categoria, r.Data, r.Importe, r.Motivo, r.DatosBanco]));
+            copyText(lines.join("\n"));
+        }
+
+        return (
+            <div className="stack">
+                <div className="card">
+                    <label htmlFor="stmt">Extracto Santander</label>
+                    <textarea
+                        id="stmt"
+                        value={input}
+                        onChange={e => setInput(e.target.value)}
+                        placeholder="Paste the statement here (including the header row)…"
+                    />
+                    <div className="row" style={{ marginTop: 10 }}>
+                        <button className="primary" onClick={processStatement}>Process</button>
+                        {hasResult && <span className="pill">{rows.length} rows</span>}
+                    </div>
+                    <div className="hint">
+                        Output money uses a dot as decimal separator and no thousands separator. Dates output as YYYY-MM-DD.
+                    </div>
+                    {error && <div className="err" style={{ marginTop: 8 }}>{error}</div>}
+                </div>
+
+                <div className="card">
+                    <div className="row" style={{ justifyContent: "space-between" }}>
+                        <div>
+                            <div style={{ fontWeight: 700, marginBottom: 6 }}>Data / Saldo</div>
+                            <div className="hint">From the first data row. Copy is TSV without header.</div>
+                        </div>
+                        <button onClick={copySummaryTSV} disabled={!summary}>Copy</button>
+                    </div>
+
+                    <div className="spacer"></div>
+
+                    <table className="mono">
+                        <thead>
+                        <tr>
+                            <th>Data</th>
+                            <th>Saldo</th>
+                        </tr>
+                        </thead>
+                        <tbody>
+                        {summary ? (
+                            <tr>
+                                <td>{summary.Data}</td>
+                                <td>{summary.Saldo}</td>
+                            </tr>
+                        ) : (
+                            <tr>
+                                <td colSpan="2" style={{ color: "#5a6478" }}>No data yet.</td>
+                            </tr>
+                        )}
+                        </tbody>
+                    </table>
+                </div>
+
+                <div className="card">
+                    <div className="row" style={{ justifyContent: "space-between" }}>
+                        <div>
+                            <div style={{ fontWeight: 700, marginBottom: 6 }}>Statement (transformed)</div>
+                            <div className="hint">Copy is TSV excluding header row.</div>
+                        </div>
+                        <button onClick={copyTableTSV} disabled={!rows.length}>Copy</button>
+                    </div>
+
+                    <div className="spacer"></div>
+
+                    <table className="mono">
+                        <thead>
+                        <tr>
+                            <th>Categoria</th>
+                            <th>Data</th>
+                            <th>Importe</th>
+                            <th>Motivo</th>
+                            <th>DatosBanco</th>
+                        </tr>
+                        </thead>
+                        <tbody>
+                        {rows.length ? rows.map((r, idx) => (
+                            <tr key={idx}>
+                                <td>{r.Categoria}</td>
+                                <td>{r.Data}</td>
+                                <td>{r.Importe}</td>
+                                <td>{r.Motivo}</td>
+                                <td>{r.DatosBanco}</td>
+                            </tr>
+                        )) : (
+                            <tr>
+                                <td colSpan="5" style={{ color: "#5a6478" }}>No data yet.</td>
+                            </tr>
+                        )}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        );
+    }
+
+    ReactDOM.createRoot(document.getElementById("root")).render(<App />);
+</script>
+</body>
+</html>
