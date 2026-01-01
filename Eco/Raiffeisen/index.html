@@ -1,0 +1,605 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>Procesador de extractos Raiffeisen</title>
+
+    <!-- React 18 (UMD) -->
+    <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+
+    <!-- Babel (for JSX in a single HTML file) -->
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+
+    <!-- SheetJS (XLSX) -->
+    <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+
+    <style>
+        :root {
+            --bg: #0b1220;
+            --card: #121a2b;
+            --muted: #93a4c7;
+            --text: #e9eefc;
+            --border: rgba(255, 255, 255, 0.10);
+            --accent: #6ea8fe;
+            --ok: #37d67a;
+            --warn: #ffcc66;
+            --danger: #ff6b6b;
+        }
+        * { box-sizing: border-box; }
+        body {
+            margin: 0;
+            font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, "Apple Color Emoji", "Segoe UI Emoji";
+            background: radial-gradient(1200px 600px at 20% 0%, #132040 0%, var(--bg) 60%);
+            color: var(--text);
+        }
+        .wrap {
+            max-width: 1100px;
+            margin: 0 auto;
+            padding: 28px 16px 42px;
+        }
+        header {
+            display: flex;
+            flex-wrap: wrap;
+            align-items: center;
+            justify-content: space-between;
+            gap: 12px;
+            margin-bottom: 18px;
+        }
+        h1 {
+            font-size: 20px;
+            margin: 0;
+            letter-spacing: 0.2px;
+        }
+        .sub {
+            color: var(--muted);
+            font-size: 13px;
+            margin-top: 6px;
+            line-height: 1.4;
+        }
+        .row {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+            align-items: center;
+        }
+        .card {
+            background: linear-gradient(180deg, rgba(255,255,255,0.04), rgba(255,255,255,0.02));
+            border: 1px solid var(--border);
+            border-radius: 14px;
+            padding: 14px;
+            box-shadow: 0 12px 30px rgba(0,0,0,0.25);
+        }
+        .btn {
+            appearance: none;
+            border: 1px solid var(--border);
+            background: rgba(255,255,255,0.06);
+            color: var(--text);
+            padding: 10px 12px;
+            border-radius: 10px;
+            cursor: pointer;
+            font-weight: 600;
+            letter-spacing: 0.2px;
+            transition: transform 0.03s ease, background 0.15s ease, border-color 0.15s ease;
+            user-select: none;
+        }
+        .btn:hover { background: rgba(255,255,255,0.10); border-color: rgba(255,255,255,0.18); }
+        .btn:active { transform: translateY(1px); }
+        .btn.primary {
+            background: rgba(110,168,254,0.18);
+            border-color: rgba(110,168,254,0.35);
+        }
+        .btn.primary:hover { background: rgba(110,168,254,0.26); }
+        .btn:disabled {
+            opacity: 0.45;
+            cursor: not-allowed;
+        }
+        .pill {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 12px;
+            color: var(--muted);
+            padding: 8px 10px;
+            border-radius: 999px;
+            border: 1px solid var(--border);
+            background: rgba(255,255,255,0.03);
+        }
+        .dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 999px;
+            background: var(--warn);
+        }
+        .dot.ok { background: var(--ok); }
+        .dot.bad { background: var(--danger); }
+        .grid {
+            display: grid;
+            grid-template-columns: 1fr;
+            gap: 14px;
+            margin-top: 14px;
+        }
+        @media (min-width: 900px) {
+            .grid.two { grid-template-columns: 1fr 1fr; }
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            overflow: hidden;
+            border-radius: 12px;
+            border: 1px solid var(--border);
+            background: rgba(0,0,0,0.12);
+        }
+        th, td {
+            padding: 10px 10px;
+            border-bottom: 1px solid rgba(255,255,255,0.06);
+            font-size: 13px;
+            vertical-align: top;
+            text-align: left;
+            white-space: nowrap;
+        }
+        th { color: #cfe0ff; background: rgba(255,255,255,0.04); font-size: 12px; letter-spacing: 0.3px; }
+        tr:last-child td { border-bottom: none; }
+        td.mono, th.mono { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace; }
+        .tableWrap { overflow-x: auto; }
+        .note {
+            color: var(--muted);
+            font-size: 12px;
+            margin-top: 8px;
+            line-height: 1.4;
+        }
+        .err {
+            color: #ffd1d1;
+            background: rgba(255,107,107,0.12);
+            border: 1px solid rgba(255,107,107,0.28);
+            padding: 10px 12px;
+            border-radius: 12px;
+            font-size: 13px;
+        }
+        .successFlash {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 12px;
+            color: #d6ffe7;
+            background: rgba(55,214,122,0.12);
+            border: 1px solid rgba(55,214,122,0.28);
+            padding: 8px 10px;
+            border-radius: 999px;
+        }
+        .spacer { flex: 1; }
+        .muted { color: var(--muted); }
+        .small { font-size: 12px; }
+        .fileName {
+            font-weight: 700;
+            color: #cfe0ff;
+        }
+    </style>
+</head>
+
+<body>
+<div class="wrap">
+    <div id="app"></div>
+</div>
+
+<script type="text/babel">
+    const { useEffect, useMemo, useRef, useState } = React;
+
+    // --- Helpers ---
+    function pad2(n) { return String(n).padStart(2, "0"); }
+
+    // Input is in DD/MM/YYYY (string) OR Date OR Excel serial number.
+    function toISODate(value) {
+        if (value == null || value === "") return "";
+
+        // Date object
+        if (value instanceof Date && !isNaN(value.getTime())) {
+            const y = value.getFullYear();
+            const m = pad2(value.getMonth() + 1);
+            const d = pad2(value.getDate());
+            return `${y}-${m}-${d}`;
+        }
+
+        // Excel serial number (SheetJS can provide numbers if cellDates=false)
+        if (typeof value === "number" && isFinite(value)) {
+            // Use SheetJS utility if available
+            try {
+                const o = XLSX.SSF.parse_date_code(value);
+                if (o && o.y && o.m && o.d) return `${o.y}-${pad2(o.m)}-${pad2(o.d)}`;
+            } catch {}
+        }
+
+        // String "DD/MM/YYYY"
+        const s = String(value).trim();
+        const m = s.match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
+        if (m) {
+            const dd = m[1], mm = m[2], yyyy = m[3];
+            return `${yyyy}-${mm}-${dd}`;
+        }
+
+        // Sometimes there's extra text; extract first date-like token
+        const m2 = s.match(/(\d{2})\/(\d{2})\/(\d{4})/);
+        if (m2) return `${m2[3]}-${m2[2]}-${m2[1]}`;
+
+        return ""; // unknown format
+    }
+
+    // Robust parsing for money-ish values (supports numbers, "1.234,56", "1234,56", "1234.56")
+    function parseMoney(value) {
+        if (value == null || value === "") return 0;
+        if (typeof value === "number" && isFinite(value)) return value;
+
+        let s = String(value).trim();
+        if (!s) return 0;
+
+        // remove spaces
+        s = s.replace(/\s+/g, "");
+
+        const hasComma = s.includes(",");
+        const hasDot = s.includes(".");
+
+        if (hasComma && hasDot) {
+            // assume dots are thousands separators and comma is decimal
+            s = s.replace(/\./g, "").replace(",", ".");
+        } else if (hasComma && !hasDot) {
+            // assume comma decimal
+            s = s.replace(",", ".");
+        } else {
+            // dot decimal or integer, keep as is
+        }
+
+        // remove any non-numeric chars except leading '-' and '.'
+        s = s.replace(/(?!^-)[^0-9.]/g, "");
+
+        const n = parseFloat(s);
+        return isFinite(n) ? n : 0;
+    }
+
+    // Output must be dot decimal and no thousands separator.
+    function formatMoney(n) {
+        const num = (typeof n === "number" && isFinite(n)) ? n : 0;
+        // Bank statements typically 2 decimals; enforce stable TSV formatting.
+        return (Math.round(num * 100) / 100).toFixed(2);
+    }
+
+    function isBlankRow(row, cols = 12) {
+        if (!row) return true;
+        for (let i = 0; i < cols; i++) {
+            const v = row[i];
+            if (v != null && String(v).trim() !== "") return false;
+        }
+        return true;
+    }
+
+    function tsvEscapeCell(x) {
+        // TSV: tabs and newlines should be replaced to keep shape.
+        const s = (x == null) ? "" : String(x);
+        return s.replace(/\t/g, " ").replace(/\r?\n/g, " ");
+    }
+
+    async function copyTextToClipboard(text) {
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+            await navigator.clipboard.writeText(text);
+            return;
+        }
+        // fallback
+        const ta = document.createElement("textarea");
+        ta.value = text;
+        ta.style.position = "fixed";
+        ta.style.left = "-9999px";
+        document.body.appendChild(ta);
+        ta.focus();
+        ta.select();
+        document.execCommand("copy");
+        document.body.removeChild(ta);
+    }
+
+    // --- App ---
+    function App() {
+        const fileInputRef = useRef(null);
+
+        const [fileName, setFileName] = useState("");
+        const [sheetArray, setSheetArray] = useState(null);
+        const [error, setError] = useState("");
+
+        const [balance, setBalance] = useState(null); // { dateISO, valueStr }
+        const [txRows, setTxRows] = useState([]); // array of objects: {Categoria, Fecha, Importe, Motivo, DatosBanco}
+
+        const [balanceCopied, setBalanceCopied] = useState(false);
+        const [txCopied, setTxCopied] = useState(false);
+
+        const status = useMemo(() => {
+            if (error) return { text: "Error", kind: "bad" };
+            if (sheetArray) return { text: "Archivo cargado", kind: "ok" };
+            return { text: "Sin archivo", kind: "" };
+        }, [error, sheetArray]);
+
+        function onClickUpload() {
+            setError("");
+            if (fileInputRef.current) fileInputRef.current.click();
+        }
+
+        async function onFileSelected(e) {
+            setError("");
+            setBalance(null);
+            setTxRows([]);
+            setBalanceCopied(false);
+            setTxCopied(false);
+
+            const file = e.target.files && e.target.files[0];
+            if (!file) return;
+
+            setFileName(file.name);
+
+            try {
+                const buf = await file.arrayBuffer();
+                const wb = XLSX.read(buf, {
+                    type: "array",
+                    cellDates: true,    // try to keep dates as Date objects when possible
+                    raw: true
+                });
+
+                const firstSheetName = wb.SheetNames[0];
+                if (!firstSheetName) throw new Error("El archivo no contiene hojas.");
+
+                const ws = wb.Sheets[firstSheetName];
+
+                // Read as array-of-arrays without headers
+                const aoa = XLSX.utils.sheet_to_json(ws, {
+                    header: 1,
+                    raw: true,
+                    defval: "" // ensure missing cells become ""
+                });
+
+                setSheetArray(aoa);
+            } catch (err) {
+                setSheetArray(null);
+                setError(`No se pudo leer el XLSX: ${err?.message || String(err)}`);
+            } finally {
+                // allow uploading same file again
+                e.target.value = "";
+            }
+        }
+
+        function processStatement() {
+            setError("");
+            setBalance(null);
+            setTxRows([]);
+            setBalanceCopied(false);
+            setTxCopied(false);
+
+            if (!sheetArray) {
+                setError("Primero sube un extracto (XLSX).");
+                return;
+            }
+
+            try {
+                // 1) Balance date: row 2, col 2 => [1][1], text "de la DD/MM/YYYY la DD/MM/YYYY"
+                const balanceDateCell = (sheetArray[1] && sheetArray[1][1]) ? String(sheetArray[1][1]) : "";
+                const dates = balanceDateCell.match(/(\d{2}\/\d{2}\/\d{4}).*?(\d{2}\/\d{2}\/\d{4})/);
+                if (!dates) {
+                    throw new Error('No se pudo extraer la fecha de balance desde la celda (fila 2, col 2) con formato "de la DD/MM/YYYY la DD/MM/YYYY".');
+                }
+                const balanceDateISO = toISODate(dates[2]);
+
+                // 2) Balance value: row 20, col 4 => [19][3]
+                const balValCell = sheetArray[19] ? sheetArray[19][3] : "";
+                const balValNum = parseMoney(balValCell);
+                const balValStr = formatMoney(balValNum);
+
+                setBalance({ dateISO: balanceDateISO, valueStr: balValStr });
+
+                // 3) Transactions: start row 24 => index 23, end at first blank row, 12 columns
+                const out = [];
+                for (let r = 23; r < sheetArray.length; r++) {
+                    const row = sheetArray[r];
+
+                    if (isBlankRow(row, 12)) break;
+
+                    const inFecha = row[0];    // input field 1
+                    const in3 = row[2];        // input field 3
+                    const in4 = row[3];        // input field 4
+                    const in12 = row[11];      // input field 12
+
+                    const fechaISO = toISODate(inFecha);
+
+                    const v3 = parseMoney(in3);
+                    const v4 = parseMoney(in4);
+                    const importe = v4 - v3;
+
+                    out.push({
+                        Categoria: "",
+                        Fecha: fechaISO,
+                        Importe: formatMoney(importe),
+                        Motivo: "",
+                        DatosBanco: (in12 == null) ? "" : String(in12)
+                    });
+                }
+
+                setTxRows(out);
+            } catch (err) {
+                setError(err?.message || String(err));
+            }
+        }
+
+        async function copyBalanceTSV() {
+            if (!balance) return;
+            const tsv = `${tsvEscapeCell(balance.dateISO)}\t${tsvEscapeCell(balance.valueStr)}`;
+            await copyTextToClipboard(tsv);
+            setBalanceCopied(true);
+            setTimeout(() => setBalanceCopied(false), 1200);
+        }
+
+        async function copyTxTSV() {
+            if (!txRows?.length) return;
+            const lines = txRows.map(r => [
+                tsvEscapeCell(r.Categoria),
+                tsvEscapeCell(r.Fecha),
+                tsvEscapeCell(r.Importe),
+                tsvEscapeCell(r.Motivo),
+                tsvEscapeCell(r.DatosBanco)
+            ].join("\t"));
+            const tsv = lines.join("\n");
+            await copyTextToClipboard(tsv);
+            setTxCopied(true);
+            setTimeout(() => setTxCopied(false), 1200);
+        }
+
+        return (
+            <div>
+                <header>
+                    <div>
+                        <h1>Procesador de extractos Raiffeisen</h1>
+                        <div className="sub">
+                            Lee un XLSX (solo la primera hoja) como array sin cabeceras, extrae balance y transacciones,
+                            y permite copiar la salida como TSV (sin fila de cabecera).<br/>
+                            <span className="muted small">Formato: fechas a ISO (YYYY-MM-DD). Valores monetarios con punto decimal y sin separador de miles.</span>
+                        </div>
+                    </div>
+
+                    <div className="row">
+                <span className="pill" title="Estado del archivo">
+                  <span className={"dot " + (status.kind === "ok" ? "ok" : status.kind === "bad" ? "bad" : "")}></span>
+                    {status.text}
+                </span>
+
+                        <button className="btn" onClick={onClickUpload}>Upload statement</button>
+                        <button className="btn primary" onClick={processStatement} disabled={!sheetArray}>Process</button>
+
+                        <input
+                            ref={fileInputRef}
+                            type="file"
+                            accept=".xlsx"
+                            style={{ display: "none" }}
+                            onChange={onFileSelected}
+                        />
+                    </div>
+                </header>
+
+                {fileName && (
+                    <div className="card" style={{ marginBottom: 14 }}>
+                        <div className="row">
+                            <div>
+                                <div className="muted small">Archivo:</div>
+                                <div className="fileName">{fileName}</div>
+                            </div>
+                            <div className="spacer"></div>
+                            <div className="muted small">
+                                {sheetArray ? `Filas leídas: ${sheetArray.length}` : ""}
+                            </div>
+                        </div>
+                    </div>
+                )}
+
+                {error && (
+                    <div className="err" style={{ marginBottom: 14 }}>
+                        {error}
+                    </div>
+                )}
+
+                <div className="grid two">
+                    {/* Balance */}
+                    <div className="card">
+                        <div className="row" style={{ marginBottom: 10 }}>
+                            <div style={{ fontWeight: 800 }}>Balance</div>
+                            <div className="spacer"></div>
+                            <button className="btn" onClick={copyBalanceTSV} disabled={!balance}>
+                                {balanceCopied ? "Copied ✓" : "Copy"}
+                            </button>
+                        </div>
+
+                        <div className="tableWrap">
+                            <table>
+                                <thead>
+                                <tr>
+                                    <th>Balance date</th>
+                                    <th className="mono">Balance value</th>
+                                </tr>
+                                </thead>
+                                <tbody>
+                                {balance ? (
+                                    <tr>
+                                        <td className="mono">{balance.dateISO}</td>
+                                        <td className="mono">{balance.valueStr}</td>
+                                    </tr>
+                                ) : (
+                                    <tr>
+                                        <td colSpan="2" className="muted">Procesa un extracto para ver el balance.</td>
+                                    </tr>
+                                )}
+                                </tbody>
+                            </table>
+                        </div>
+
+                        <div className="note">
+                            Extrae la fecha desde <span className="mono">fila 2, col 2</span> (segundo DD/MM/YYYY) y el valor desde <span className="mono">fila 20, col 4</span>.
+                        </div>
+                    </div>
+
+                    {/* Transactions */}
+                    <div className="card">
+                        <div className="row" style={{ marginBottom: 10 }}>
+                            <div style={{ fontWeight: 800 }}>Transacciones procesadas</div>
+                            <div className="spacer"></div>
+                            <button className="btn" onClick={copyTxTSV} disabled={!txRows.length}>
+                                {txCopied ? "Copied ✓" : "Copy"}
+                            </button>
+                        </div>
+
+                        <div className="tableWrap">
+                            <table>
+                                <thead>
+                                <tr>
+                                    <th>Categoria</th>
+                                    <th>Fecha</th>
+                                    <th className="mono">Importe</th>
+                                    <th>Motivo</th>
+                                    <th>DatosBanco</th>
+                                </tr>
+                                </thead>
+                                <tbody>
+                                {txRows.length ? (
+                                    txRows.map((r, i) => (
+                                        <tr key={i}>
+                                            <td>{r.Categoria}</td>
+                                            <td className="mono">{r.Fecha}</td>
+                                            <td className="mono">{r.Importe}</td>
+                                            <td>{r.Motivo}</td>
+                                            <td title={r.DatosBanco} style={{ maxWidth: 360, overflow: "hidden", textOverflow: "ellipsis" }}>
+                                                {r.DatosBanco}
+                                            </td>
+                                        </tr>
+                                    ))
+                                ) : (
+                                    <tr>
+                                        <td colSpan="5" className="muted">Procesa un extracto para ver las transacciones.</td>
+                                    </tr>
+                                )}
+                                </tbody>
+                            </table>
+                        </div>
+
+                        <div className="note">
+                            Lee desde <span className="mono">fila 24</span> hasta la primera fila en blanco (12 columnas).
+                            Mapea: <span className="mono">Fecha = col 1</span>, <span className="mono">Importe = col 4 - col 3</span> (vacío = 0),
+                            <span className="mono">DatosBanco = col 12</span>.
+                        </div>
+                    </div>
+                </div>
+
+                <div style={{ marginTop: 14 }} className="card">
+                    <div className="muted small">
+                        Tip: Si en tu XLSX los importes vienen como texto con coma decimal (p.ej. <span className="mono">1.234,56</span>),
+                        este procesador intenta interpretarlo correctamente, pero siempre exporta con punto decimal y sin separador de miles.
+                    </div>
+                </div>
+            </div>
+        );
+    }
+
+    const root = ReactDOM.createRoot(document.getElementById("app"));
+    root.render(<App />);
+</script>
+</body>
+</html>

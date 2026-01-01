@@ -1,0 +1,420 @@
+<!doctype html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>Procesador de extractos Revolut</title>
+
+    <!-- React (UMD) -->
+    <script crossorigin src="https://unpkg.com/react@18/umd/react.development.js"></script>
+    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+    <!-- Babel for in-browser JSX (single-file convenience) -->
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+
+    <style>
+        :root { --bg:#0b0d12; --panel:#111521; --muted:#9aa4b2; --text:#e8eef7; --border:#24304a; --btn:#2a66ff; --btn2:#1b2235; }
+        * { box-sizing:border-box; }
+        body { margin:0; font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Arial; background:var(--bg); color:var(--text); }
+        .wrap { max-width:1100px; margin:0 auto; padding:24px; }
+        h1 { margin:0 0 16px; font-size:22px; }
+        .grid { display:grid; gap:14px; }
+        .card { background:var(--panel); border:1px solid var(--border); border-radius:14px; padding:14px; }
+        .row { display:flex; gap:10px; align-items:center; flex-wrap:wrap; }
+        label { font-weight:600; }
+        textarea {
+            width:100%; min-height:220px; resize:vertical; padding:12px;
+            border-radius:12px; border:1px solid var(--border); background:#0e1320; color:var(--text);
+            font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+            font-size:12px; line-height:1.45;
+        }
+        button {
+            border:0; border-radius:12px; padding:10px 12px; cursor:pointer;
+            background:var(--btn); color:white; font-weight:700;
+        }
+        button.secondary { background:var(--btn2); color:var(--text); border:1px solid var(--border); }
+        button:disabled { opacity:.6; cursor:not-allowed; }
+        .hint { color:var(--muted); font-size:12px; margin-top:8px; }
+        table { width:100%; border-collapse:separate; border-spacing:0; overflow:hidden; border-radius:12px; border:1px solid var(--border); }
+        th, td { padding:10px 10px; border-bottom:1px solid var(--border); vertical-align:top; }
+        th { text-align:left; background:#0e1320; color:#cfe1ff; font-size:12px; letter-spacing:.02em; }
+        td { background:#0f1526; font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace; font-size:12px; }
+        tr:last-child td { border-bottom:0; }
+        .status { color:var(--muted); font-size:12px; }
+        .pill { display:inline-block; padding:2px 8px; border-radius:999px; background:#0e1320; border:1px solid var(--border); color:var(--muted); font-size:12px; }
+        .twoCols { display:grid; grid-template-columns: 1fr 1fr; gap:14px; }
+        @media (max-width: 900px) { .twoCols { grid-template-columns: 1fr; } }
+        input[type="file"] { color:var(--muted); }
+        .err { color:#ffb3b3; }
+    </style>
+</head>
+<body>
+<div class="wrap">
+    <h1>Procesador de extractos Revolut</h1>
+    <div id="root"></div>
+</div>
+
+<script type="text/babel">
+    const { useMemo, useRef, useState } = React;
+
+    // --- CSV parsing (handles quoted fields, commas, newlines in quotes) ---
+    function parseCSV(text) {
+        const rows = [];
+        let row = [];
+        let field = "";
+        let i = 0;
+        let inQuotes = false;
+
+        // Normalize line endings
+        text = (text ?? "").replace(/\r\n/g, "\n").replace(/\r/g, "\n");
+
+        while (i < text.length) {
+            const ch = text[i];
+
+            if (inQuotes) {
+                if (ch === '"') {
+                    // Escaped quote
+                    if (text[i + 1] === '"') {
+                        field += '"';
+                        i += 2;
+                        continue;
+                    }
+                    inQuotes = false;
+                    i += 1;
+                    continue;
+                }
+                field += ch;
+                i += 1;
+                continue;
+            }
+
+            if (ch === '"') {
+                inQuotes = true;
+                i += 1;
+                continue;
+            }
+
+            if (ch === ",") {
+                row.push(field);
+                field = "";
+                i += 1;
+                continue;
+            }
+
+            if (ch === "\n") {
+                row.push(field);
+                rows.push(row);
+                row = [];
+                field = "";
+                i += 1;
+                continue;
+            }
+
+            field += ch;
+            i += 1;
+        }
+
+        // Last field
+        row.push(field);
+        rows.push(row);
+
+        // Trim rows and drop fully-empty lines
+        const cleaned = rows
+            .map(r => r.map(v => (v ?? "").trim()))
+            .filter(r => r.some(v => v !== ""));
+
+        return cleaned;
+    }
+
+    function stripTime(ts) {
+        const s = (ts ?? "").trim();
+        if (!s) return "";
+        // Remove time part from common formats:
+        // - "2025-01-31 12:34:56"
+        // - "2025-01-31T12:34:56Z"
+        // - "31/01/2025 12:34"
+        // Keep only the date portion before space or 'T'
+        const idxSpace = s.indexOf(" ");
+        const idxT = s.indexOf("T");
+        if (idxSpace !== -1) return s.slice(0, idxSpace);
+        if (idxT !== -1) return s.slice(0, idxT);
+        return s;
+    }
+
+    function toNumberDotDecimal(s) {
+        // Assumption: no thousands separator, dot decimal separator (user requirement)
+        const t = (s ?? "").trim();
+        if (t === "") return NaN;
+        // Also tolerate leading +/-, and currency symbols accidentally present
+        const cleaned = t.replace(/[^\d.+-]/g, "");
+        const n = Number(cleaned);
+        return Number.isFinite(n) ? n : NaN;
+    }
+
+    function formatMoneyDot(n) {
+        // Ensure dot decimal separator and no thousands separator.
+        // Use 2 decimals if number has cents; if integer, still keep 2 decimals for bank-style output.
+        if (!Number.isFinite(n)) return "";
+        // Avoid scientific notation for typical statement values
+        return n.toFixed(2);
+    }
+
+    function buildTSV(rows) {
+        return rows.map(r => r.map(v => (v ?? "")).join("\t")).join("\n");
+    }
+
+    function detectHeaderRow(rows) {
+        if (!rows || rows.length === 0) return false;
+        const r0 = rows[0];
+        // Heuristic: if it contains any alphabetic characters, treat as header
+        return r0.some(cell => /[A-Za-zÁÉÍÓÚÜÑáéíóúüñ]/.test(cell || ""));
+    }
+
+    function App() {
+        const [inputText, setInputText] = useState("");
+        const [status, setStatus] = useState("Pega el extracto o sube un archivo, luego pulsa Procesar.");
+        const [error, setError] = useState("");
+        const fileRef = useRef(null);
+
+        const [summary, setSummary] = useState({ data: "", saldo: "" });
+        const [transformed, setTransformed] = useState([]); // array of rows (including header)
+
+        const canProcess = inputText.trim().length > 0;
+
+        function handleUpload(e) {
+            setError("");
+            const file = e.target.files?.[0];
+            if (!file) return;
+
+            const reader = new FileReader();
+            reader.onload = () => {
+                const text = reader.result?.toString() ?? "";
+                setInputText(text);
+                setStatus(`Archivo cargado: ${file.name} (${file.size} bytes).`);
+            };
+            reader.onerror = () => setError("No se pudo leer el archivo.");
+            // Read as UTF-8
+            reader.readAsText(file, "utf-8");
+        }
+
+        function process() {
+            setError("");
+            try {
+                const rowsAll = parseCSV(inputText);
+                if (!rowsAll.length) {
+                    setError("No se encontraron filas válidas.");
+                    setSummary({ data: "", saldo: "" });
+                    setTransformed([]);
+                    return;
+                }
+
+                const hasHeader = detectHeaderRow(rowsAll);
+                const rows = hasHeader ? rowsAll.slice(1) : rowsAll;
+
+                if (!rows.length) {
+                    setError("Solo se detectó cabecera, sin datos.");
+                    setSummary({ data: "", saldo: "" });
+                    setTransformed([]);
+                    return;
+                }
+
+                // Last row summary: Data = 4th field, Saldo = last field
+                const last = rows[rows.length - 1];
+                const data4 = stripTime(last[3] ?? "");
+                const saldoLast = last[last.length - 1] ?? "";
+
+                setSummary({
+                    data: data4,
+                    saldo: saldoLast
+                });
+
+                // Transformations per user requirements (1-indexed fields)
+                // 1. Remove fields 1,2,3,7,8,9,10
+                // 2. Replace field 6 with "Importe" = field6 - field7 (original)
+                // 3. Rename field 5 as "DatosBanco"
+                // 4. Rename field 4 as "Data" (also strip time)
+                // 5. Add "Categoria" empty
+                // 6. Add "Motivo"
+                // 7. Reorder: "Categoria","Data","Importe","Motivo","DatosBanco"
+
+                const out = [];
+                out.push(["Categoria", "Data", "Importe", "Motivo", "DatosBanco"]);
+
+                for (const r of rows) {
+                    // Need at least up to field 10 ideally, but handle short rows safely.
+                    const f4 = stripTime(r[3] ?? "");
+                    const f5 = r[4] ?? "";
+                    const f6raw = r[5] ?? "";
+                    const f7raw = r[6] ?? "";
+
+                    const f6 = toNumberDotDecimal(f6raw);
+                    const f7 = toNumberDotDecimal(f7raw);
+
+                    // If parsing fails, keep empty
+                    const importe = (Number.isFinite(f6) && Number.isFinite(f7)) ? formatMoneyDot(f6 - f7) : "";
+
+                    const categoria = "";
+                    const motivo = "";
+
+                    out.push([categoria, f4, importe, motivo, f5]);
+                }
+
+                setTransformed(out);
+                setStatus(`Procesado: ${rows.length} filas de datos${hasHeader ? " (cabecera detectada)" : ""}.`);
+            } catch (e) {
+                setError("Error procesando el texto. Asegúrate de que sea CSV válido (comas y comillas).");
+                setSummary({ data: "", saldo: "" });
+                setTransformed([]);
+            }
+        }
+
+        async function copyTextToClipboard(text) {
+            try {
+                await navigator.clipboard.writeText(text);
+                setStatus("Copiado al portapapeles.");
+            } catch {
+                // Fallback
+                const ta = document.createElement("textarea");
+                ta.value = text;
+                document.body.appendChild(ta);
+                ta.select();
+                document.execCommand("copy");
+                document.body.removeChild(ta);
+                setStatus("Copiado al portapapeles.");
+            }
+        }
+
+        const summaryTSV = useMemo(() => {
+            if (!summary.data && !summary.saldo) return "";
+            return buildTSV([[summary.data, summary.saldo]]);
+        }, [summary]);
+
+        const transformedTSVNoHeader = useMemo(() => {
+            if (!transformed || transformed.length <= 1) return "";
+            return buildTSV(transformed.slice(1));
+        }, [transformed]);
+
+        return (
+            <div className="grid">
+                <div className="card">
+                    <div className="row" style={{ justifyContent: "space-between" }}>
+                        <label>Extracto Revolut</label>
+                        <span className="pill">CSV pegado o archivo (UTF-8)</span>
+                    </div>
+
+                    <div className="row" style={{ marginTop: 10 }}>
+                        <input
+                            ref={fileRef}
+                            type="file"
+                            onChange={handleUpload}
+                            aria-label="Subir archivo"
+                        />
+                        <button onClick={process} disabled={!canProcess}>Procesar</button>
+                        <button
+                            className="secondary"
+                            onClick={() => { setInputText(""); setTransformed([]); setSummary({data:"",saldo:""}); setError(""); setStatus("Limpio."); if (fileRef.current) fileRef.current.value=""; }}
+                        >
+                            Limpiar
+                        </button>
+                        <span className="status">{status}</span>
+                    </div>
+
+                    <textarea
+                        value={inputText}
+                        onChange={(e) => setInputText(e.target.value)}
+                        placeholder='Pega aquí el CSV de Revolut...'
+                    />
+
+                    <div className="hint">
+                        Reglas: los importes se asumen con punto decimal (sin separador de miles) y en la salida se mantienen con punto decimal (sin miles). Se elimina la parte de hora de los timestamps.
+                    </div>
+                    {error && <div className="hint err">{error}</div>}
+                </div>
+
+                <div className="twoCols">
+                    <div className="card">
+                        <div className="row" style={{ justifyContent: "space-between" }}>
+                            <label>Resumen</label>
+                            <button
+                                className="secondary"
+                                onClick={() => copyTextToClipboard(summaryTSV)}
+                                disabled={!summaryTSV}
+                            >
+                                Copy
+                            </button>
+                        </div>
+
+                        <div style={{ marginTop: 10 }}>
+                            <table>
+                                <thead>
+                                <tr>
+                                    <th>Data</th>
+                                    <th>Saldo</th>
+                                </tr>
+                                </thead>
+                                <tbody>
+                                <tr>
+                                    <td>{summary.data}</td>
+                                    <td>{summary.saldo}</td>
+                                </tr>
+                                </tbody>
+                            </table>
+                            <div className="hint">Copiado como TSV, sin cabecera.</div>
+                        </div>
+                    </div>
+
+                    <div className="card">
+                        <div className="row" style={{ justifyContent: "space-between" }}>
+                            <label>Tabla transformada</label>
+                            <button
+                                className="secondary"
+                                onClick={() => copyTextToClipboard(transformedTSVNoHeader)}
+                                disabled={!transformedTSVNoHeader}
+                            >
+                                Copy TSV (sin cabecera)
+                            </button>
+                        </div>
+
+                        <div style={{ marginTop: 10, overflowX: "auto" }}>
+                            <table>
+                                <thead>
+                                <tr>
+                                    <th>Categoria</th>
+                                    <th>Data</th>
+                                    <th>Importe</th>
+                                    <th>Motivo</th>
+                                    <th>DatosBanco</th>
+                                </tr>
+                                </thead>
+                                <tbody>
+                                {(transformed && transformed.length > 1) ? (
+                                    transformed.slice(1).map((r, idx) => (
+                                        <tr key={idx}>
+                                            <td>{r[0]}</td>
+                                            <td>{r[1]}</td>
+                                            <td>{r[2]}</td>
+                                            <td>{r[3]}</td>
+                                            <td>{r[4]}</td>
+                                        </tr>
+                                    ))
+                                ) : (
+                                    <tr>
+                                        <td colSpan="5" className="status">Sin datos aún. Pulsa Procesar.</td>
+                                    </tr>
+                                )}
+                                </tbody>
+                            </table>
+                            <div className="hint">
+                                Transformaciones aplicadas:
+                                quitar campos 1,2,3,7,8,9,10; Importe = campo6 - campo7; renombrar campo4→Data (sin hora) y campo5→DatosBanco; añadir Categoria y Motivo; reordenar: Categoria, Data, Importe, Motivo, DatosBanco.
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        );
+    }
+
+    ReactDOM.createRoot(document.getElementById("root")).render(<App />);
+</script>
+</body>
+</html>
