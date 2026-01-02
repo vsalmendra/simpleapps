@@ -1,0 +1,296 @@
+<!-- File: Trabajando con extractos OTP.html -->
+<!doctype html>
+<html lang="es">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>Trabajando con extractos OTP</title>
+    <style>
+        :root{
+            --bg:#0b0c10;
+            --card:#12141b;
+            --text:#e9ecf1;
+            --muted:#b7c0cc;
+            --line:#2a2f3a;
+            --accent:#6aa9ff;
+            --ok:#65d48b;
+            --warn:#ffd166;
+        }
+        *{box-sizing:border-box}
+        body{
+            margin:0;
+            font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
+            background:linear-gradient(180deg, var(--bg), #0f1220 60%, var(--bg));
+            color:var(--text);
+            line-height:1.55;
+        }
+        .wrap{
+            max-width: 940px;
+            margin: 0 auto;
+            padding: 28px 18px 56px;
+        }
+        header{
+            padding: 18px 16px 10px;
+            border:1px solid var(--line);
+            background:rgba(18,20,27,.85);
+            border-radius: 18px;
+        }
+        h1{
+            margin: 0 0 6px 0;
+            font-size: 28px;
+            letter-spacing: .2px;
+        }
+        .subtitle{
+            margin:0;
+            color:var(--muted);
+            font-size: 14.5px;
+        }
+
+        section{
+            margin-top: 16px;
+            padding: 18px 16px;
+            border:1px solid var(--line);
+            background: rgba(18,20,27,.65);
+            border-radius: 18px;
+        }
+        h2{
+            margin: 0 0 10px 0;
+            font-size: 18px;
+        }
+        p{margin: 10px 0}
+        ul{
+            margin: 10px 0 0 22px;
+            padding:0;
+        }
+        li{margin: 6px 0}
+        .step{
+            border-left: 4px solid var(--accent);
+            padding-left: 12px;
+        }
+        .badge{
+            display:inline-block;
+            padding: 2px 10px;
+            border:1px solid var(--line);
+            border-radius: 999px;
+            color: var(--muted);
+            font-size: 12px;
+            margin-bottom: 8px;
+        }
+        .callout{
+            margin-top: 10px;
+            padding: 12px 12px;
+            border:1px solid var(--line);
+            border-radius: 14px;
+            background: rgba(255,255,255,.03);
+        }
+        .callout strong{color: var(--text)}
+        .callout ul{margin-top:8px}
+        .kbd{
+            display:inline-block;
+            border:1px solid var(--line);
+            background: rgba(255,255,255,.04);
+            padding: 1px 8px;
+            border-radius: 8px;
+            font-size: 12.5px;
+            color: var(--text);
+            vertical-align: baseline;
+        }
+        .mono{
+            font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+            font-size: 12.5px;
+            color: var(--text);
+        }
+        pre{
+            margin: 10px 0 0;
+            padding: 12px;
+            border:1px solid var(--line);
+            border-radius: 14px;
+            background: rgba(0,0,0,.35);
+            overflow:auto;
+            white-space: pre-wrap;
+            word-wrap: break-word;
+        }
+        .row{
+            display:flex;
+            flex-wrap:wrap;
+            gap:10px;
+            margin-top:10px;
+        }
+        button{
+            appearance:none;
+            border:1px solid var(--line);
+            background: rgba(255,255,255,.06);
+            color: var(--text);
+            border-radius: 12px;
+            padding: 10px 12px;
+            font-size: 13px;
+            cursor:pointer;
+        }
+        button:hover{border-color: rgba(106,169,255,.6)}
+        button:active{transform: translateY(1px)}
+        .status{
+            margin-top: 8px;
+            color: var(--muted);
+            font-size: 13px;
+            min-height: 1.2em;
+        }
+        a{color: var(--accent); text-decoration: none}
+        a:hover{text-decoration: underline}
+        footer{
+            margin-top: 18px;
+            color: var(--muted);
+            font-size: 12.5px;
+            padding: 6px 4px 0;
+        }
+    </style>
+</head>
+
+<body>
+<div class="wrap">
+    <header>
+        <h1>Trabajando con extractos OTP</h1>
+        <p class="subtitle">Guía paso a paso para bajar y trabajar un extracto de una cuenta OTP.</p>
+    </header>
+
+    <section>
+        <h2>Introducción</h2>
+        <p>Esta página guía en el proceso de bajar y trabajar un extracto de una cuenta OTP.</p>
+        <p>Si tienes cuentas en várias monedas, repetir el proceso para cada moneda. Se recomienda cerrar todas las ventanas para no perderse.</p>
+    </section>
+
+    <section class="step" id="paso-1">
+        <div class="badge">Paso</div>
+        <h2>Abre el fichero Google Sheets con el resumen económico</h2>
+        <p>Si no lo encuentras fácilmente, busca en Google Drive en <span class="kbd">"ficheros compartidos"</span>. Puedes buscar por las palabras <span class="kbd">"resumen personal"</span>. Cuidado para no utilizar versiones viejas.</p>
+    </section>
+
+    <section class="step" id="paso-2">
+        <div class="badge">Paso</div>
+        <h2>Seleccione la hoja "Entrada de datos"</h2>
+    </section>
+
+    <section class="step" id="paso-3">
+        <div class="badge">Paso</div>
+        <h2>Elija la cuenta corecta (celda B1)</h2>
+    </section>
+
+    <section class="step" id="paso-4">
+        <div class="badge">Paso</div>
+        <h2>Baja el extracto OTP (kivonat) en formato PDF para el período de interés</h2>
+        <div class="callout">
+            <ul>
+                <li>Sólo incluir meses que ya han terminado!</li>
+                <li>Los Kivonat normalmente están el el menu <span class="kbd">"Documentumok"</span></li>
+                <li>No sirven extractos Excel!</li>
+            </ul>
+        </div>
+    </section>
+
+    <section class="step" id="paso-5">
+        <div class="badge">Paso</div>
+        <h2>Extraer datos del extracto utilizando Gemini</h2>
+
+        <ul>
+            <li>Abrir Gemini: <a href="https://gemini.google.com" target="_blank" rel="noopener">https://gemini.google.com</a></li>
+            <li>Hacer upload del fichero pdf (botón <span class="kbd">"+"</span>)</li>
+            <li>Copiar el prompt abajo, pegarlo y apretar <span class="kbd">Enter</span></li>
+        </ul>
+
+        <div class="row">
+            <button type="button" id="copyPromptBtn">Copiar prompt</button>
+        </div>
+        <div class="status" id="copyStatus" aria-live="polite"></div>
+
+        <pre class="mono" id="promptText">Quiero que extraigas de este extracto bancario una tabla con la información de las transacciones.
+El extracto puede tener múltiples páginas; es necesario procesarlas todas.
+Las fechas hay que convertir al formato ISO YYYY-MM-DD. La fecha que interesa es KÖNYVELÉS.
+Los valores monetarios están en la columna “ÖSSZEG”. Antes de utilizarlos hay que remover los puntos (son separadores de miles), pero manteniendo el signo.
+Primero necesito saber el saldo final y en qué fecha. Esta información está en la última línea del extracto y se llama ZARÓ EGYENLEG.
+Crea una tabla en formato TSV. En la que la primera columna llamada "Fecha del saldo" tenga la fecha correspondiente a este saldo y la segunda columna "Saldo" tenga el valor del saldo.
+La tabla debe estar lista para copiar y pegar en google sheets.
+Después necesito la tabla de transacciones procesada, pero removiendo los saldos (NYITÓ y ZARÓ EGYENLEG).
+La tabla final debe tener las siguientes columnas: Fecha, Importe, Motivo, DatosBanco, en este orden.
+Fecha debe ser la fecha KÖNYVELÉS de la transacción en formato ISO.
+Motivo deben tener el valor “?”
+DatosBanco debe ser el contenido de la columna “MEGNEVEZÉS” después de eliminar de ella los números irrelevantes.
+La tabla final debe estar en formato TSV y debe poder copiarse y pegarse directamente en un documento de Google Sheets.
+El saldo inicial (NYITÓ EGYENLEG) debe excluirse y el saldo final (ZÁRÓ EGYENLEG) debe añadirse a una segunda tabla, con su fecha de contabilización como primera columna.</pre>
+    </section>
+
+    <section class="step" id="paso-6">
+        <div class="badge">Paso</div>
+        <h2>Copiar la fecha y el valor del saldo final (hay un botón)</h2>
+    </section>
+
+    <section class="step" id="paso-7">
+        <div class="badge">Paso</div>
+        <h2>Volver al resumen y pegar en la celda A5</h2>
+    </section>
+
+    <section class="step" id="paso-8">
+        <div class="badge">Paso</div>
+        <h2>Apretar el botón copiar justo arriba de las transacciones</h2>
+    </section>
+
+    <section class="step" id="paso-9">
+        <div class="badge">Paso</div>
+        <h2>Ir al resumen, seleccionar la celda B10 y pegar</h2>
+    </section>
+
+    <section class="step" id="paso-10">
+        <div class="badge">Paso</div>
+        <h2>Pulsa botón "Aplicar reglas", para categorizar automáticamente transacciones para las que ya tienes reglas</h2>
+    </section>
+
+    <section class="step" id="paso-11">
+        <div class="badge">Paso</div>
+        <h2>Rellenar campos "Categoría" y "motivo"</h2>
+        <p>En caso de duda, pon <span class="kbd">"?"</span> en el motivo. Transferencias entre cuentas (incluso cambios Revolut) deben estar en la categoría <span class="kbd">"01"</span></p>
+    </section>
+
+    <section class="step" id="paso-12">
+        <div class="badge">Paso</div>
+        <h2>Comprueba que todas las verificaciones hayan sido hechas con éxito (columna I) y pulsa "Incorporar datos"</h2>
+    </section>
+
+    <footer>
+        <p class="subtitle">Consejo práctico: puedes desplazarte siguiendo los pasos de arriba hacia abajo.</p>
+    </footer>
+</div>
+
+<script>
+    (function () {
+        const btn = document.getElementById('copyPromptBtn');
+        const pre = document.getElementById('promptText');
+        const status = document.getElementById('copyStatus');
+
+        async function copyText(text) {
+            if (navigator.clipboard && window.isSecureContext) {
+                await navigator.clipboard.writeText(text);
+                return;
+            }
+            const ta = document.createElement('textarea');
+            ta.value = text;
+            ta.style.position = 'fixed';
+            ta.style.left = '-9999px';
+            ta.style.top = '0';
+            document.body.appendChild(ta);
+            ta.focus();
+            ta.select();
+            document.execCommand('copy');
+            document.body.removeChild(ta);
+        }
+
+        btn.addEventListener('click', async () => {
+            try {
+                await copyText(pre.innerText);
+                status.textContent = 'Prompt copiado al portapapeles.';
+            } catch (e) {
+                status.textContent = 'No se pudo copiar automáticamente. Selecciona el texto y cópialo manualmente.';
+            }
+            setTimeout(() => { status.textContent = ''; }, 2500);
+        });
+    })();
+</script>
+</body>
+</html>

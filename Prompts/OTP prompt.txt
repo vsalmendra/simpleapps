@@ -1,0 +1,63 @@
+As an experienced front end engineer and knowledgeable on csv processing, data processing and bank statements,
+write me a self-contained html file named "Trabajando con extractos OTP".
+
+The page should be a step-by-step guide.
+
+Page language is Spanish
+
+Page should flow from top to bottom, without side-by-side elements (these are confusing for users)
+
+Instruction text is in the Markdown below. Don't add additional instructions, just format and place things in
+a way that is easier to follow.
+
+```
+### Introducción
+Esta página guía en el proceso de bajar y trabajar un extracto de una cuenta OTP.
+
+Si tienes cuentas en várias monedas, repetir el proceso para cada moneda. Se recomienda cerrar todas las ventanas para no perderse.
+
+### Paso: abre el fichero Google Sheets con el resumen económico
+Si no lo encuentras fácilmente, busca en Google Drive en "ficheros compartidos". Puedes buscar por las palabras "resumen personal". Cuidado para no utilizar versiones viejas.
+
+### Paso: Seleccione la hoja "Entrada de datos"
+
+### Paso: elija la cuenta corecta (celda B1)
+
+### Paso: Baja el extracto OTP (kivonat) en formato PDF para el período de interés.
+* Sólo incluir meses que ya han terminado!
+* Los Kivonat normalmente están el el menu "Documentumok"
+* No sirven extractos Excel!
+
+### Paso: Extraer datos del extracto utilizando Gemini
+* Abrir Gemini: https://gemini.google.com
+* Hacer upload del fichero pdf (botón "+")
+* Copiar el prompt abajo, pegarlo y apretar Enter
+
+Quiero que extraigas de este extracto bancario una tabla con la información de las transacciones.
+El extracto puede tener múltiples páginas; es necesario procesarlas todas.
+Las fechas hay que convertir al formato ISO YYYY-MM-DD. La fecha que interesa es KÖNYVELÉS.
+Los valores monetarios están en la columna “ÖSSZEG”. Antes de utilizarlos hay que remover los puntos (son separadores de miles), pero manteniendo el signo.
+Primero necesito saber el saldo final y en qué fecha. Esta información está en la última línea del extracto y se llama ZARÓ EGYENLEG.
+Crea una tabla en formato TSV. En la que la primera columna llamada "Fecha del saldo" tenga la fecha correspondiente a este saldo y la segunda columna "Saldo" tenga el valor del saldo.
+La tabla debe estar lista para copiar y pegar en google sheets.
+Después necesito la tabla de transacciones procesada, pero removiendo los saldos (NYITÓ y ZARÓ EGYENLEG).
+La tabla final debe tener las siguientes columnas: Fecha, Importe, Motivo, DatosBanco, en este orden.
+Fecha debe ser la fecha KÖNYVELÉS de la transacción en formato ISO.
+Motivo deben tener el valor “?”
+DatosBanco debe ser el contenido de la columna “MEGNEVEZÉS” después de eliminar de ella los números irrelevantes.
+La tabla final debe estar en formato TSV y debe poder copiarse y pegarse directamente en un documento de Google Sheets.
+El saldo inicial (NYITÓ EGYENLEG) debe excluirse y el saldo final (ZÁRÓ EGYENLEG) debe añadirse a una segunda tabla, con su fecha de contabilización como primera columna.
+
+### Paso: Copiar la fecha y el valor del saldo final (hay un botón)
+
+### Paso: Volver al resumen y pegar en la celda A5
+
+### Paso: Apretar el botón copiar justo arriba de las transacciones
+
+### Paso: Ir al resumen, seleccionar la celda B10 y pegar
+
+### Paso: Pulsa botón "Aplicar reglas", para categorizar automáticamente transacciones para las que ya tienes reglas
+
+### Paso: Rellenar campos "Categoría" y "motivo". En caso de duda, pon "?" en el motivo. Transferencias entre cuentas (incluso cambios Revolut) deben estar en la categoría "01"
+
+### Paso: comprueba que todas las verificaciones hayan sido hechas con éxito (columna I) y pulsa "Incorporar datos"
