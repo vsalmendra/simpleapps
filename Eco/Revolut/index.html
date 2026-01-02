@@ -3,412 +3,745 @@
 <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width,initial-scale=1" />
-    <title>Procesador de extractos Revolut</title>
+    <title>Trabajando con extractos Revolut</title>
 
-    <!-- React (UMD) -->
-    <script crossorigin src="https://unpkg.com/react@18/umd/react.development.js"></script>
-    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
-    <!-- Babel for in-browser JSX (single-file convenience) -->
+    <!-- React (CDN) -->
+    <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+
+    <!-- Big.js para aritmética decimal (evita errores de coma flotante) -->
+    <script src="https://unpkg.com/big.js@6.2.1/big.min.js"></script>
+
+    <!-- Babel para JSX en un solo HTML -->
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
 
     <style>
-        :root { --bg:#0b0d12; --panel:#111521; --muted:#9aa4b2; --text:#e8eef7; --border:#24304a; --btn:#2a66ff; --btn2:#1b2235; }
-        * { box-sizing:border-box; }
-        body { margin:0; font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Arial; background:var(--bg); color:var(--text); }
-        .wrap { max-width:1100px; margin:0 auto; padding:24px; }
-        h1 { margin:0 0 16px; font-size:22px; }
-        .grid { display:grid; gap:14px; }
-        .card { background:var(--panel); border:1px solid var(--border); border-radius:14px; padding:14px; }
-        .row { display:flex; gap:10px; align-items:center; flex-wrap:wrap; }
-        label { font-weight:600; }
+        :root {
+            --bg: #0b0f17;
+            --card: #101827;
+            --text: #e8eefc;
+            --muted: #a9b6d3;
+            --border: rgba(255, 255, 255, 0.12);
+            --accent: #5dd6c0;
+            --danger: #ff6b6b;
+            --warn: #ffd166;
+        }
+
+        * { box-sizing: border-box; }
+        body {
+            margin: 0;
+            font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, "Apple Color Emoji","Segoe UI Emoji";
+            background: radial-gradient(1200px 600px at 20% 0%, rgba(93, 214, 192, 0.16), transparent 60%),
+            radial-gradient(1000px 500px at 80% 10%, rgba(99, 102, 241, 0.14), transparent 55%),
+            var(--bg);
+            color: var(--text);
+            line-height: 1.4;
+        }
+
+        .container {
+            max-width: 980px;
+            margin: 0 auto;
+            padding: 24px 16px 56px;
+        }
+
+        h1 {
+            margin: 6px 0 12px;
+            font-size: 28px;
+            letter-spacing: 0.2px;
+        }
+
+        .subtitle {
+            margin: 0 0 18px;
+            color: var(--muted);
+            font-size: 14px;
+        }
+
+        .card {
+            background: linear-gradient(180deg, rgba(255,255,255,0.04), rgba(255,255,255,0.02));
+            border: 1px solid var(--border);
+            border-radius: 16px;
+            padding: 16px;
+            margin: 14px 0;
+            box-shadow: 0 12px 30px rgba(0,0,0,0.25);
+        }
+
+        .stepTitle {
+            font-size: 16px;
+            margin: 0 0 10px;
+            letter-spacing: 0.2px;
+        }
+
+        .p {
+            margin: 8px 0;
+            color: var(--text);
+        }
+        .muted { color: var(--muted); }
+        .bullets {
+            margin: 8px 0 0 18px;
+            color: var(--text);
+        }
+        .bullets li { margin: 6px 0; }
+
+        .label {
+            display: block;
+            margin: 0 0 8px;
+            font-weight: 600;
+            font-size: 13px;
+            color: var(--text);
+        }
+
         textarea {
-            width:100%; min-height:220px; resize:vertical; padding:12px;
-            border-radius:12px; border:1px solid var(--border); background:#0e1320; color:var(--text);
-            font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
-            font-size:12px; line-height:1.45;
+            width: 100%;
+            min-height: 220px;
+            resize: vertical;
+            border-radius: 12px;
+            border: 1px solid var(--border);
+            background: rgba(0,0,0,0.25);
+            color: var(--text);
+            padding: 12px;
+            outline: none;
+            font-size: 13px;
+            line-height: 1.45;
         }
-        button {
-            border:0; border-radius:12px; padding:10px 12px; cursor:pointer;
-            background:var(--btn); color:white; font-weight:700;
+        textarea:focus {
+            border-color: rgba(93, 214, 192, 0.6);
+            box-shadow: 0 0 0 3px rgba(93, 214, 192, 0.15);
         }
-        button.secondary { background:var(--btn2); color:var(--text); border:1px solid var(--border); }
-        button:disabled { opacity:.6; cursor:not-allowed; }
-        .hint { color:var(--muted); font-size:12px; margin-top:8px; }
-        table { width:100%; border-collapse:separate; border-spacing:0; overflow:hidden; border-radius:12px; border:1px solid var(--border); }
-        th, td { padding:10px 10px; border-bottom:1px solid var(--border); vertical-align:top; }
-        th { text-align:left; background:#0e1320; color:#cfe1ff; font-size:12px; letter-spacing:.02em; }
-        td { background:#0f1526; font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace; font-size:12px; }
-        tr:last-child td { border-bottom:0; }
-        .status { color:var(--muted); font-size:12px; }
-        .pill { display:inline-block; padding:2px 8px; border-radius:999px; background:#0e1320; border:1px solid var(--border); color:var(--muted); font-size:12px; }
-        .twoCols { display:grid; grid-template-columns: 1fr 1fr; gap:14px; }
-        @media (max-width: 900px) { .twoCols { grid-template-columns: 1fr; } }
-        input[type="file"] { color:var(--muted); }
-        .err { color:#ffb3b3; }
+
+        .row {
+            display: block;
+            margin-top: 10px;
+        }
+
+        .btn {
+            display: inline-flex;
+            align-items: center;
+            gap: 10px;
+            padding: 10px 12px;
+            border-radius: 12px;
+            border: 1px solid var(--border);
+            background: rgba(255,255,255,0.06);
+            color: var(--text);
+            cursor: pointer;
+            user-select: none;
+            font-weight: 600;
+            font-size: 13px;
+            transition: transform 0.02s ease, background 0.12s ease, border-color 0.12s ease;
+            box-shadow: 0 8px 18px rgba(0,0,0,0.2);
+        }
+
+        .btn:hover {
+            background: rgba(255,255,255,0.09);
+            border-color: rgba(255,255,255,0.18);
+        }
+
+        /* Feedback en el botón (presionado) */
+        .btn.pressed, .btn:active {
+            transform: translateY(1px);
+            background: rgba(93, 214, 192, 0.14);
+            border-color: rgba(93, 214, 192, 0.5);
+            box-shadow: inset 0 2px 10px rgba(0,0,0,0.25);
+        }
+
+        .btn.secondary.pressed, .btn.secondary:active {
+            background: rgba(255,255,255,0.12);
+            border-color: rgba(255,255,255,0.28);
+        }
+
+        .btn.danger.pressed, .btn.danger:active {
+            background: rgba(255, 107, 107, 0.18);
+            border-color: rgba(255, 107, 107, 0.55);
+        }
+
+        .btnRow {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+            margin: 10px 0 0;
+        }
+
+        .fileHint {
+            margin-top: 8px;
+            font-size: 12px;
+            color: var(--muted);
+        }
+
+        .hr {
+            height: 1px;
+            background: var(--border);
+            margin: 14px 0;
+        }
+
+        .notice {
+            margin: 10px 0 0;
+            font-size: 13px;
+            color: var(--muted);
+        }
+
+        .status {
+            margin-top: 10px;
+            font-size: 13px;
+            padding: 10px 12px;
+            border-radius: 12px;
+            border: 1px solid var(--border);
+            background: rgba(0,0,0,0.2);
+        }
+        .status.ok { border-color: rgba(93, 214, 192, 0.4); }
+        .status.warn { border-color: rgba(255, 209, 102, 0.5); }
+        .status.err { border-color: rgba(255, 107, 107, 0.5); }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            overflow: hidden;
+            background: rgba(0,0,0,0.18);
+        }
+        thead th {
+            text-align: left;
+            font-size: 12px;
+            padding: 10px 10px;
+            color: var(--muted);
+            border-bottom: 1px solid var(--border);
+            background: rgba(255,255,255,0.04);
+        }
+        tbody td {
+            padding: 10px 10px;
+            border-bottom: 1px solid rgba(255,255,255,0.06);
+            font-size: 13px;
+            vertical-align: top;
+        }
+        tbody tr:last-child td { border-bottom: none; }
+
+        .tableWrap {
+            margin-top: 10px;
+            overflow-x: auto;
+            border-radius: 12px;
+        }
+
+        .small {
+            font-size: 12px;
+            color: var(--muted);
+        }
+
+        a { color: var(--accent); }
+        code {
+            background: rgba(255,255,255,0.06);
+            border: 1px solid var(--border);
+            padding: 2px 6px;
+            border-radius: 8px;
+            font-size: 12px;
+        }
     </style>
 </head>
+
 <body>
-<div class="wrap">
-    <h1>Procesador de extractos Revolut</h1>
-    <div id="root"></div>
-</div>
+<div id="root"></div>
 
 <script type="text/babel">
-    const { useMemo, useRef, useState } = React;
+    const { useEffect, useMemo, useRef, useState } = React;
 
-    // --- CSV parsing (handles quoted fields, commas, newlines in quotes) ---
+    // CSV parser robusto (comillas, comas, CRLF). Sin dependencias.
     function parseCSV(text) {
         const rows = [];
         let row = [];
         let field = "";
-        let i = 0;
         let inQuotes = false;
 
-        // Normalize line endings
-        text = (text ?? "").replace(/\r\n/g, "\n").replace(/\r/g, "\n");
-
-        while (i < text.length) {
-            const ch = text[i];
+        for (let i = 0; i < text.length; i++) {
+            const c = text[i];
 
             if (inQuotes) {
-                if (ch === '"') {
-                    // Escaped quote
+                if (c === '"') {
+                    // doble comilla -> comilla escapada
                     if (text[i + 1] === '"') {
                         field += '"';
-                        i += 2;
-                        continue;
+                        i++;
+                    } else {
+                        inQuotes = false;
                     }
-                    inQuotes = false;
-                    i += 1;
-                    continue;
+                } else {
+                    field += c;
                 }
-                field += ch;
-                i += 1;
-                continue;
+            } else {
+                if (c === '"') {
+                    inQuotes = true;
+                } else if (c === ",") {
+                    row.push(field);
+                    field = "";
+                } else if (c === "\n") {
+                    row.push(field);
+                    field = "";
+                    // quitar CR si viene de \r\n
+                    if (row.length === 1 && row[0] === "" && rows.length === 0) {
+                        // tolerar archivos raros con primera línea vacía
+                    }
+                    rows.push(row.map(v => v.replace(/\r/g, "")));
+                    row = [];
+                } else {
+                    field += c;
+                }
             }
-
-            if (ch === '"') {
-                inQuotes = true;
-                i += 1;
-                continue;
-            }
-
-            if (ch === ",") {
-                row.push(field);
-                field = "";
-                i += 1;
-                continue;
-            }
-
-            if (ch === "\n") {
-                row.push(field);
-                rows.push(row);
-                row = [];
-                field = "";
-                i += 1;
-                continue;
-            }
-
-            field += ch;
-            i += 1;
         }
 
-        // Last field
+        // último campo / fila
         row.push(field);
-        rows.push(row);
+        const cleaned = row.map(v => v.replace(/\r/g, ""));
+        // Evita añadir una fila final vacía típica
+        const isAllEmpty = cleaned.every(v => (v ?? "").trim() === "");
+        if (!isAllEmpty) rows.push(cleaned);
 
-        // Trim rows and drop fully-empty lines
-        const cleaned = rows
-            .map(r => r.map(v => (v ?? "").trim()))
-            .filter(r => r.some(v => v !== ""));
-
-        return cleaned;
+        // Quita filas totalmente vacías intermedias
+        return rows.filter(r => r.some(v => (v ?? "").trim() !== ""));
     }
 
     function stripTime(ts) {
         const s = (ts ?? "").trim();
         if (!s) return "";
-        // Remove time part from common formats:
-        // - "2025-01-31 12:34:56"
-        // - "2025-01-31T12:34:56Z"
-        // - "31/01/2025 12:34"
-        // Keep only the date portion before space or 'T'
-        const idxSpace = s.indexOf(" ");
-        const idxT = s.indexOf("T");
-        if (idxSpace !== -1) return s.slice(0, idxSpace);
-        if (idxT !== -1) return s.slice(0, idxT);
+        // "YYYY-MM-DD HH:MM:SS" o "YYYY-MM-DDTHH:MM:SS..."
+        if (s.includes(" ")) return s.split(" ")[0];
+        if (s.includes("T")) return s.split("T")[0];
         return s;
     }
 
-    function toNumberDotDecimal(s) {
-        // Assumption: no thousands separator, dot decimal separator (user requirement)
-        const t = (s ?? "").trim();
-        if (t === "") return NaN;
-        // Also tolerate leading +/-, and currency symbols accidentally present
-        const cleaned = t.replace(/[^\d.+-]/g, "");
-        const n = Number(cleaned);
-        return Number.isFinite(n) ? n : NaN;
+    function safeBig(str) {
+        const s = (str ?? "").trim();
+        // Asumimos: sin separador de miles y con punto decimal (según requerimiento)
+        if (s === "") return null;
+        // Permite signos +/-
+        if (!/^[+-]?\d+(\.\d+)?$/.test(s)) return null;
+        try { return new Big(s); } catch { return null; }
     }
 
-    function formatMoneyDot(n) {
-        // Ensure dot decimal separator and no thousands separator.
-        // Use 2 decimals if number has cents; if integer, still keep 2 decimals for bank-style output.
-        if (!Number.isFinite(n)) return "";
-        // Avoid scientific notation for typical statement values
-        return n.toFixed(2);
-    }
-
-    function buildTSV(rows) {
+    function toTSV(rows) {
         return rows.map(r => r.map(v => (v ?? "")).join("\t")).join("\n");
     }
 
-    function detectHeaderRow(rows) {
-        if (!rows || rows.length === 0) return false;
-        const r0 = rows[0];
-        // Heuristic: if it contains any alphabetic characters, treat as header
-        return r0.some(cell => /[A-Za-zÁÉÍÓÚÜÑáéíóúüñ]/.test(cell || ""));
+    function downloadTextFile(filename, text) {
+        const blob = new Blob([text], { type: "text/plain;charset=utf-8" });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = filename;
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        URL.revokeObjectURL(url);
+    }
+
+    function Button({ variant="primary", onClick, children, title, disabled }) {
+        const [pressed, setPressed] = useState(false);
+
+        const cls = [
+            "btn",
+            variant === "secondary" ? "secondary" : "",
+            variant === "danger" ? "danger" : "",
+            pressed ? "pressed" : "",
+        ].filter(Boolean).join(" ");
+
+        return (
+            <button
+                className={cls}
+                title={title}
+                disabled={disabled}
+                onPointerDown={() => !disabled && setPressed(true)}
+                onPointerUp={() => setPressed(false)}
+                onPointerCancel={() => setPressed(false)}
+                onPointerLeave={() => setPressed(false)}
+                onClick={(e) => {
+                    if (disabled) return;
+                    onClick?.(e);
+                }}
+                style={{
+                    opacity: disabled ? 0.55 : 1,
+                    cursor: disabled ? "not-allowed" : "pointer",
+                }}
+            >
+                {children}
+            </button>
+        );
     }
 
     function App() {
-        const [inputText, setInputText] = useState("");
-        const [status, setStatus] = useState("Pega el extracto o sube un archivo, luego pulsa Procesar.");
-        const [error, setError] = useState("");
-        const fileRef = useRef(null);
+        const [csvText, setCsvText] = useState("");
+        const [statusMsg, setStatusMsg] = useState({ type: "warn", text: "Pega o sube un extracto CSV de Revolut y pulsa “Procesar”." });
 
-        const [summary, setSummary] = useState({ data: "", saldo: "" });
-        const [transformed, setTransformed] = useState([]); // array of rows (including header)
+        const [saldoFecha, setSaldoFecha] = useState("");
+        const [saldoValor, setSaldoValor] = useState("");
 
-        const canProcess = inputText.trim().length > 0;
+        const [txRows, setTxRows] = useState([]); // [{Fecha, Importe, Motivo, DatosBanco}]
+        const fileInputRef = useRef(null);
 
-        function handleUpload(e) {
-            setError("");
+        const processed = useMemo(() => {
+            return {
+                saldoTSV: (saldoFecha || saldoValor) ? toTSV([[saldoFecha, saldoValor]]) : "",
+                txTSV: txRows.length ? toTSV(txRows.map(r => [r.Fecha, r.Importe, r.Motivo, r.DatosBanco])) : ""
+            };
+        }, [saldoFecha, saldoValor, txRows]);
+
+        function handleUploadClick() {
+            fileInputRef.current?.click();
+        }
+
+        async function handleFileChange(e) {
             const file = e.target.files?.[0];
             if (!file) return;
 
-            const reader = new FileReader();
-            reader.onload = () => {
-                const text = reader.result?.toString() ?? "";
-                setInputText(text);
-                setStatus(`Archivo cargado: ${file.name} (${file.size} bytes).`);
-            };
-            reader.onerror = () => setError("No se pudo leer el archivo.");
-            // Read as UTF-8
-            reader.readAsText(file, "utf-8");
+            const name = (file.name || "").toLowerCase();
+            if (!name.endsWith(".csv")) {
+                setStatusMsg({ type: "err", text: "El fichero debe tener extensión .csv." });
+                e.target.value = "";
+                return;
+            }
+
+            try {
+                const text = await file.text(); // UTF-8 por defecto en navegadores modernos
+                setCsvText(text);
+                setStatusMsg({ type: "ok", text: "CSV cargado. Ahora pulsa “Procesar”." });
+            } catch (err) {
+                setStatusMsg({ type: "err", text: "No pude leer el fichero. Intenta de nuevo." });
+            } finally {
+                e.target.value = "";
+            }
         }
 
-        function process() {
-            setError("");
+        function processCSV() {
+            const raw = (csvText ?? "").trim();
+            if (!raw) {
+                setStatusMsg({ type: "err", text: "El campo “Extracto Revolut” está vacío." });
+                setSaldoFecha(""); setSaldoValor(""); setTxRows([]);
+                return;
+            }
+
+            let rows;
             try {
-                const rowsAll = parseCSV(inputText);
-                if (!rowsAll.length) {
-                    setError("No se encontraron filas válidas.");
-                    setSummary({ data: "", saldo: "" });
-                    setTransformed([]);
-                    return;
+                rows = parseCSV(raw);
+            } catch {
+                setStatusMsg({ type: "err", text: "No pude interpretar el CSV. Asegúrate de pegar el contenido completo." });
+                setSaldoFecha(""); setSaldoValor(""); setTxRows([]);
+                return;
+            }
+
+            if (!rows.length) {
+                setStatusMsg({ type: "err", text: "El CSV no contiene filas." });
+                setSaldoFecha(""); setSaldoValor(""); setTxRows([]);
+                return;
+            }
+
+            // Detecta y elimina encabezado si existe:
+            // Si la 4ª columna contiene "date" / "created" / "completed" o algo no-fecha típico.
+            const header = rows[0] || [];
+            const col4 = (header[3] ?? "").toLowerCase();
+            const looksLikeHeader =
+                header.some(h => /type|description|date|time|status|balance|amount|currency/i.test(h ?? "")) ||
+                /date|time|created|completed|started/i.test(col4);
+
+            const dataRows = looksLikeHeader ? rows.slice(1) : rows;
+
+            // Última fila “real” (no vacía)
+            const lastRow = [...dataRows].reverse().find(r => r.some(v => (v ?? "").trim() !== ""));
+            if (!lastRow || lastRow.length < 4) {
+                setStatusMsg({ type: "err", text: "No encontré una última fila válida para calcular saldo." });
+                setSaldoFecha(""); setSaldoValor(""); setTxRows([]);
+                return;
+            }
+
+            // SALDO:
+            // Fecha = 4º campo de la última fila, sin hora
+            // Saldo = último campo de la última fila
+            const lastFecha = stripTime(lastRow[3] ?? "");
+            const lastSaldo = (lastRow[lastRow.length - 1] ?? "").trim();
+
+            setSaldoFecha(lastFecha);
+            setSaldoValor(lastSaldo);
+
+            // TRANSACCIONES:
+            // 0) eliminar filas donde campo 9 == "REVERTED" (campo 9 => índice 8)
+            // 1) eliminar campos 1,2,3,7,8,9,10 (1-indexados)
+            // 2) "Importe" = campo6 - campo7 (originales, 1-indexados => idx 5 y 6)
+            // 3) campo5 => DatosBanco (idx 4)
+            // 4) campo4 => Fecha (idx 3), sin hora
+            // 5) Motivo = "?"
+            // 6) Orden: Fecha, Importe, Motivo, DatosBanco
+
+            const out = [];
+            let revertedCount = 0;
+            let badMoneyCount = 0;
+            let shortRowCount = 0;
+
+            for (const r of dataRows) {
+                // Ignora filas demasiado cortas
+                if (!r || r.length < 7) { shortRowCount++; continue; }
+
+                const statusField9 = (r[8] ?? "").trim(); // puede no existir, pero ok
+                if (statusField9 === "REVERTED") { revertedCount++; continue; }
+
+                const fecha = stripTime((r[3] ?? "").trim());
+                const datosBanco = (r[4] ?? "").trim();
+
+                const a = safeBig(r[5]);
+                const b = safeBig(r[6]);
+
+                let importe = "";
+                if (a && b) {
+                    importe = a.minus(b).toString(); // punto decimal, sin miles
+                } else {
+                    // si no se puede calcular, deja vacío pero cuenta como advertencia
+                    badMoneyCount++;
+                    // intento “suave”: si hay algo en campo6 lo mantenemos, pero preferimos no inventar
+                    const fallback = (r[5] ?? "").trim();
+                    if (/^[+-]?\d+(\.\d+)?$/.test(fallback)) importe = fallback;
                 }
 
-                const hasHeader = detectHeaderRow(rowsAll);
-                const rows = hasHeader ? rowsAll.slice(1) : rowsAll;
-
-                if (!rows.length) {
-                    setError("Solo se detectó cabecera, sin datos.");
-                    setSummary({ data: "", saldo: "" });
-                    setTransformed([]);
-                    return;
-                }
-
-                // Last row summary: Data = 4th field, Saldo = last field
-                const last = rows[rows.length - 1];
-                const data4 = stripTime(last[3] ?? "");
-                const saldoLast = last[last.length - 1] ?? "";
-
-                setSummary({
-                    data: data4,
-                    saldo: saldoLast
+                out.push({
+                    Fecha: fecha,
+                    Importe: importe,
+                    Motivo: "?",
+                    DatosBanco: datosBanco
                 });
+            }
 
-                // Transformations per user requirements (1-indexed fields)
-                // 1. Remove fields 1,2,3,7,8,9,10
-                // 2. Replace field 6 with "Importe" = field6 - field7 (original)
-                // 3. Rename field 5 as "DatosBanco"
-                // 4. Rename field 4 as "Data" (also strip time)
-                // 5. Add "Categoria" empty
-                // 6. Add "Motivo"
-                // 7. Reorder: "Categoria","Data","Importe","Motivo","DatosBanco"
+            setTxRows(out);
 
-                const out = [];
-                out.push(["Categoria", "Data", "Importe", "Motivo", "DatosBanco"]);
+            // Mensaje de estado
+            const warnings = [];
+            if (revertedCount) warnings.push(`${revertedCount} fila(s) REVERTED omitida(s)`);
+            if (shortRowCount) warnings.push(`${shortRowCount} fila(s) demasiado corta(s) omitida(s)`);
+            if (badMoneyCount) warnings.push(`${badMoneyCount} fila(s) con importes no numéricos (Importe puede quedar vacío)`);
 
-                for (const r of rows) {
-                    // Need at least up to field 10 ideally, but handle short rows safely.
-                    const f4 = stripTime(r[3] ?? "");
-                    const f5 = r[4] ?? "";
-                    const f6raw = r[5] ?? "";
-                    const f7raw = r[6] ?? "";
-
-                    const f6 = toNumberDotDecimal(f6raw);
-                    const f7 = toNumberDotDecimal(f7raw);
-
-                    // If parsing fails, keep empty
-                    const importe = (Number.isFinite(f6) && Number.isFinite(f7)) ? formatMoneyDot(f6 - f7) : "";
-
-                    const categoria = "";
-                    const motivo = "";
-
-                    out.push([categoria, f4, importe, motivo, f5]);
-                }
-
-                setTransformed(out);
-                setStatus(`Procesado: ${rows.length} filas de datos${hasHeader ? " (cabecera detectada)" : ""}.`);
-            } catch (e) {
-                setError("Error procesando el texto. Asegúrate de que sea CSV válido (comas y comillas).");
-                setSummary({ data: "", saldo: "" });
-                setTransformed([]);
+            if (!out.length) {
+                setStatusMsg({ type: "warn", text: "Procesado, pero no quedaron transacciones para mostrar. Revisa el CSV." });
+            } else if (warnings.length) {
+                setStatusMsg({ type: "warn", text: `Procesado con avisos: ${warnings.join(" · ")}` });
+            } else {
+                setStatusMsg({ type: "ok", text: `Procesado correctamente: ${out.length} transacción(es).` });
             }
         }
 
         async function copyTextToClipboard(text) {
             try {
                 await navigator.clipboard.writeText(text);
-                setStatus("Copiado al portapapeles.");
+                return true;
             } catch {
-                // Fallback
-                const ta = document.createElement("textarea");
-                ta.value = text;
-                document.body.appendChild(ta);
-                ta.select();
-                document.execCommand("copy");
-                document.body.removeChild(ta);
-                setStatus("Copiado al portapapeles.");
+                // fallback
+                try {
+                    const ta = document.createElement("textarea");
+                    ta.value = text;
+                    ta.style.position = "fixed";
+                    ta.style.left = "-9999px";
+                    document.body.appendChild(ta);
+                    ta.focus();
+                    ta.select();
+                    const ok = document.execCommand("copy");
+                    ta.remove();
+                    return ok;
+                } catch {
+                    return false;
+                }
             }
         }
 
-        const summaryTSV = useMemo(() => {
-            if (!summary.data && !summary.saldo) return "";
-            return buildTSV([[summary.data, summary.saldo]]);
-        }, [summary]);
+        async function copySaldo() {
+            if (!processed.saldoTSV) {
+                setStatusMsg({ type: "err", text: "No hay saldo para copiar. Primero pulsa “Procesar”." });
+                return;
+            }
+            const ok = await copyTextToClipboard(processed.saldoTSV);
+            setStatusMsg(ok
+                ? { type: "ok", text: "Saldo copiado al portapapeles (TSV, sin encabezado)." }
+                : { type: "err", text: "No pude copiar al portapapeles. Prueba con otro navegador." }
+            );
+        }
 
-        const transformedTSVNoHeader = useMemo(() => {
-            if (!transformed || transformed.length <= 1) return "";
-            return buildTSV(transformed.slice(1));
-        }, [transformed]);
+        async function copyTx() {
+            if (!processed.txTSV) {
+                setStatusMsg({ type: "err", text: "No hay transacciones para copiar. Primero pulsa “Procesar”." });
+                return;
+            }
+            const ok = await copyTextToClipboard(processed.txTSV);
+            setStatusMsg(ok
+                ? { type: "ok", text: "Transacciones copiadas al portapapeles (TSV, sin encabezado)." }
+                : { type: "err", text: "No pude copiar al portapapeles. Prueba con otro navegador." }
+            );
+        }
 
         return (
-            <div className="grid">
+            <div className="container">
+                <h1>Trabajando con extractos Revolut</h1>
+                <p className="subtitle">
+                    Guía paso a paso para bajar y trabajar un extracto de una cuenta Revolut. Si tienes cuentas en varias monedas,
+                    repite el proceso para cada moneda. Se recomienda cerrar todas las ventanas para no perderse.
+                </p>
+
                 <div className="card">
-                    <div className="row" style={{ justifyContent: "space-between" }}>
-                        <label>Extracto Revolut</label>
-                        <span className="pill">CSV pegado o archivo (UTF-8)</span>
-                    </div>
-
-                    <div className="row" style={{ marginTop: 10 }}>
-                        <input
-                            ref={fileRef}
-                            type="file"
-                            onChange={handleUpload}
-                            aria-label="Subir archivo"
-                        />
-                        <button onClick={process} disabled={!canProcess}>Procesar</button>
-                        <button
-                            className="secondary"
-                            onClick={() => { setInputText(""); setTransformed([]); setSummary({data:"",saldo:""}); setError(""); setStatus("Limpio."); if (fileRef.current) fileRef.current.value=""; }}
-                        >
-                            Limpiar
-                        </button>
-                        <span className="status">{status}</span>
-                    </div>
-
-                    <textarea
-                        value={inputText}
-                        onChange={(e) => setInputText(e.target.value)}
-                        placeholder='Pega aquí el CSV de Revolut...'
-                    />
-
-                    <div className="hint">
-                        Reglas: los importes se asumen con punto decimal (sin separador de miles) y en la salida se mantienen con punto decimal (sin miles). Se elimina la parte de hora de los timestamps.
-                    </div>
-                    {error && <div className="hint err">{error}</div>}
+                    <h2 className="stepTitle">Paso 1 — Abre el resumen en Google Sheets</h2>
+                    <p className="p">
+                        Abre el fichero Google Sheets con el resumen económico. Si no lo encuentras fácilmente,
+                        busca en Google Drive en <span className="muted">“ficheros compartidos”</span>. Puedes buscar por las palabras
+                        <code>resumen personal</code>. Cuidado para no utilizar versiones viejas.
+                    </p>
+                    <p className="p">Seleccione la hoja <b>“Entrada de datos”</b>.</p>
+                    <p className="p">Elija la cuenta correcta (celda <b>B1</b>).</p>
                 </div>
 
-                <div className="twoCols">
-                    <div className="card">
-                        <div className="row" style={{ justifyContent: "space-between" }}>
-                            <label>Resumen</label>
-                            <button
-                                className="secondary"
-                                onClick={() => copyTextToClipboard(summaryTSV)}
-                                disabled={!summaryTSV}
-                            >
-                                Copy
-                            </button>
-                        </div>
+                <div className="card">
+                    <h2 className="stepTitle">Paso 2 — Baja el extracto Revolut</h2>
+                    <p className="p">
+                        Baja el extracto Revolut en formato Excel (ir a <a href="https://www.revolut.com/" target="_blank" rel="noreferrer">revolut.com</a>) para el período de interés.
+                    </p>
+                    <ul className="bullets">
+                        <li><b>Sólo</b> incluir meses que ya han terminado.</li>
+                        <li>Atención: aunque diga “Excel”, el fichero tiene terminación <b>CSV</b>.</li>
+                        <li>Utiliza para esto el website (el app no deja enviar ficheros CSV por email).</li>
+                        <li><b>No</b> abrir el fichero en Excel, salvo que instruido por Vinicius.</li>
+                    </ul>
+                </div>
 
-                        <div style={{ marginTop: 10 }}>
-                            <table>
-                                <thead>
-                                <tr>
-                                    <th>Data</th>
-                                    <th>Saldo</th>
-                                </tr>
-                                </thead>
-                                <tbody>
-                                <tr>
-                                    <td>{summary.data}</td>
-                                    <td>{summary.saldo}</td>
-                                </tr>
-                                </tbody>
-                            </table>
-                            <div className="hint">Copiado como TSV, sin cabecera.</div>
+                <div className="card">
+                    <h2 className="stepTitle">Paso 3 — Pega o sube el extracto</h2>
+
+                    <div className="btnRow">
+                        <Button variant="secondary" onClick={handleUploadClick} title="Subir un fichero .csv">
+                            Subir fichero .csv
+                        </Button>
+
+                        <input
+                            ref={fileInputRef}
+                            type="file"
+                            accept=".csv,text/csv"
+                            style={{ display: "none" }}
+                            onChange={handleFileChange}
+                        />
+
+                        <Button onClick={processCSV} title="Procesar el CSV y rellenar los pasos siguientes">
+                            Procesar
+                        </Button>
+                    </div>
+
+                    <div className="row" style={{ marginTop: 12 }}>
+                        <label className="label" htmlFor="csvField">Extracto Revolut</label>
+                        <textarea
+                            id="csvField"
+                            value={csvText}
+                            onChange={(e) => setCsvText(e.target.value)}
+                            placeholder="Pega aquí el contenido CSV del extracto Revolut…"
+                        />
+                        <div className="fileHint">
+                            El fichero debe ser <b>.csv</b> y se leerá como <b>UTF-8</b>.
                         </div>
                     </div>
 
-                    <div className="card">
-                        <div className="row" style={{ justifyContent: "space-between" }}>
-                            <label>Tabla transformada</label>
-                            <button
-                                className="secondary"
-                                onClick={() => copyTextToClipboard(transformedTSVNoHeader)}
-                                disabled={!transformedTSVNoHeader}
-                            >
-                                Copy TSV (sin cabecera)
-                            </button>
-                        </div>
+                    <div className={`status ${statusMsg.type}`}>
+                        {statusMsg.text}
+                    </div>
+                </div>
 
-                        <div style={{ marginTop: 10, overflowX: "auto" }}>
-                            <table>
-                                <thead>
-                                <tr>
-                                    <th>Categoria</th>
-                                    <th>Data</th>
-                                    <th>Importe</th>
-                                    <th>Motivo</th>
-                                    <th>DatosBanco</th>
-                                </tr>
-                                </thead>
-                                <tbody>
-                                {(transformed && transformed.length > 1) ? (
-                                    transformed.slice(1).map((r, idx) => (
-                                        <tr key={idx}>
-                                            <td>{r[0]}</td>
-                                            <td>{r[1]}</td>
-                                            <td>{r[2]}</td>
-                                            <td>{r[3]}</td>
-                                            <td>{r[4]}</td>
-                                        </tr>
-                                    ))
-                                ) : (
-                                    <tr>
-                                        <td colSpan="5" className="status">Sin datos aún. Pulsa Procesar.</td>
+                <div className="card">
+                    <h2 className="stepTitle">Paso 4 — Copiar saldo al resumen</h2>
+                    <p className="p">
+                        Aprieta el botón <b>“Copiar saldo”</b>, vuelve al resumen, selecciona la celda <b>A6</b> y utilice el comando <b>“Pegar”</b>.
+                    </p>
+
+                    <div className="tableWrap">
+                        <table>
+                            <thead>
+                            <tr>
+                                <th>Fecha</th>
+                                <th>Saldo</th>
+                            </tr>
+                            </thead>
+                            <tbody>
+                            <tr>
+                                <td>{saldoFecha || <span className="muted">—</span>}</td>
+                                <td>{saldoValor || <span className="muted">—</span>}</td>
+                            </tr>
+                            </tbody>
+                        </table>
+                    </div>
+
+                    <div className="btnRow">
+                        <Button onClick={copySaldo} disabled={!processed.saldoTSV}>
+                            Copiar saldo
+                        </Button>
+                    </div>
+
+                    <p className="notice">
+                        Nota: la fecha se muestra sin la parte de hora.
+                    </p>
+                </div>
+
+                <div className="card">
+                    <h2 className="stepTitle">Paso 5 — Copiar transacciones al resumen</h2>
+                    <p className="p">
+                        Aprieta el botón <b>“Copiar transacciones”</b> abajo, vuelve al resumen, seleccione la celda <b>B11</b> y utilice el comando <b>“Pegar”</b>.
+                    </p>
+
+                    <div className="btnRow">
+                        <Button onClick={copyTx} disabled={!processed.txTSV}>
+                            Copiar transacciones
+                        </Button>
+                    </div>
+
+                    <div className="tableWrap">
+                        <table>
+                            <thead>
+                            <tr>
+                                <th>Fecha</th>
+                                <th>Importe</th>
+                                <th>Motivo</th>
+                                <th>DatosBanco</th>
+                            </tr>
+                            </thead>
+                            <tbody>
+                            {txRows.length ? (
+                                txRows.map((r, idx) => (
+                                    <tr key={idx}>
+                                        <td>{r.Fecha}</td>
+                                        <td>{r.Importe}</td>
+                                        <td>{r.Motivo}</td>
+                                        <td>{r.DatosBanco}</td>
                                     </tr>
-                                )}
-                                </tbody>
-                            </table>
-                            <div className="hint">
-                                Transformaciones aplicadas:
-                                quitar campos 1,2,3,7,8,9,10; Importe = campo6 - campo7; renombrar campo4→Data (sin hora) y campo5→DatosBanco; añadir Categoria y Motivo; reordenar: Categoria, Data, Importe, Motivo, DatosBanco.
-                            </div>
-                        </div>
+                                ))
+                            ) : (
+                                <tr>
+                                    <td colSpan="4" className="muted">— Aún no hay transacciones. Pega o sube el CSV y pulsa “Procesar”.</td>
+                                </tr>
+                            )}
+                            </tbody>
+                        </table>
                     </div>
+
+                    <div className="hr"></div>
+
+                    <p className="p"><b>Paso 6 — Aplicar reglas</b></p>
+                    <p className="p muted">
+                        Pulsa botón “Aplicar reglas”, para categorizar automáticamente transacciones para las que ya tienes reglas.
+                    </p>
+
+                    <p className="p"><b>Paso 7 — Completar Categoría y motivo</b></p>
+                    <p className="p muted">
+                        Rellenar campos “Categoría” y “motivo”. En caso de duda, pon “?” en el motivo.
+                        Transferencias entre cuentas (incluso cambios Revolut) deben estar en la categoría “01”.
+                    </p>
+
+                    <p className="p"><b>Paso 8 — Verificaciones e incorporación</b></p>
+                    <p className="p muted">
+                        Comprueba que todas las verificaciones hayan sido hechas con éxito (columna I) y pulsa “Incorporar datos”.
+                    </p>
+
+                    <p className="small">
+                        Recordatorio: todos los valores monetarios se manejan con punto decimal y sin separador de miles.
+                    </p>
+                </div>
+
+                <div className="card">
+                    <h2 className="stepTitle">Ayuda rápida</h2>
+                    <ul className="bullets">
+                        <li>Si el botón “Copiar …” no funciona, prueba otro navegador (Chrome/Edge suele ir bien).</li>
+                        <li>Si ves importes vacíos, revisa que el CSV tenga números con <b>punto decimal</b> (ej. <code>12.34</code>).</li>
+                        <li>Si tu extracto tiene varias monedas, repite todo el proceso por cada moneda.</li>
+                    </ul>
                 </div>
             </div>
         );

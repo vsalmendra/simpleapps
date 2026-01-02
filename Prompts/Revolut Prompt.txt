@@ -1,0 +1,63 @@
+As an experienced front end engineer and knowledgeable on csv processing, data processing and bank statements,
+write me a react single page application contained in a single html file named "Trabajando con extractos Revolut".
+
+All monetary values on the output should have dot as decimal separator and no thousands separator.
+
+Remove the time part of the timestamps.
+
+Assume all monetary values have no thousands separator and already have dot as the decimal separator.
+
+The app should be like a step-by-step guide. Most of the content will be textual, but it will also have some processing.
+
+App language is Spanish
+
+App should flow from top to bottom, without side-by-side elements (these are confusing for users)
+
+All buttons should have visual feedback when they are pressed. The feedback should be in the button itself.
+
+The conversion instructions and details don't need to appear in the app UI.
+
+Introducción: este app guía en el proceso de bajar y trabajar un extracto de una cuenta Revolut. Si tienes cuentas en várias monedas, repetir el proceso para cada moneda. Se recomienda cerrar todas las ventanas para no perderse.
+
+Paso: abre el fichero Google Sheets con el resumen economico. Si no lo encuentras fácilmente, busca en Google Drive en "ficheros compartidos". Puedes buscar por las palabras "resumen personal". Cuidado para no utilizar versiones viejas.
+
+Paso: seleccione la hoja "Entrada de datos"
+
+Paso: elija la cuenta corecta (celda B1)
+
+Paso: Baja el extracto Revolut en formato Excel (ir a https://www.revolut.com/) para el período de interés.
+* Sólo incluir meses que ya han terminado!
+* Atención: aunque diga "Excel", el fichero tiene terminación CSV.
+* Utiliza para esto el website (el app no deja enviar ficheros CSV por email).
+* NO abrir el fichero en Excel, salvo que instruido por Vinicius.
+
+Paso: hagas upload del extracto en el campo abajo.
+
+The application should have a first field, titled "Extracto Revolut", where the user can paste a CSV Revolut statement or he can upload a file whose contents should be processed as UTF-8 and put in the field. The file must have csv extension. The upload button should be above the table
+
+There should be a "process button", which will fill the fields in the next steps
+
+Paso: Aprieta el botón "Copiar saldo", vuelva al resumen, selecciona la celda A6 y utilice el comando "Pegar"
+
+There should be here a two column table with two fields: "Fecha" and "Saldo". "Fecha" should be  the fourth field of the last row of the Revolut table and "Saldo" the value of the last field. There should be a "Copiar saldo" button that copies in TSV format, without header.
+
+Paso: Aprieta el botón "Copiar transacciones" abajo, vuelve al resumen, seleccione la celda B11 y utilice el comando "Pegar"
+
+There should be a table containing the contents of the statement after several transformations applied. These are the transformations:
+0. remove any rows where field number 9 has value "REVERTED"
+1. Remove the fields number 1, 2, 3, 7, 8, 9, 10
+2. Replace the field number 6 with a field named "Importe" which is the original field number 6 minus field number 7
+3. Rename field number 5 as "DatosBanco"
+4. Rename the field number 4 as "Fecha"
+5. Add a field named Motivo containing the value "?"
+6. Reorder the fields: "Fecha", "Importe", "Motivo", "DatosBanco"
+
+Add just before the table a button "Copiar transacciones" that copies the resulting table as TSV, excluding the header row.
+
+Paso: Pulsa botón "Aplicar reglas", para categorizar automáticamente transacciones para las que ya tienes reglas
+
+(don't add any button, this is button is in another app)
+
+Paso: rellenar campos "Categoría" y "motivo". En caso de duda, pon "?" en el motivo. Transferencias entre cuentas (incluso cambios Revolut) deben estar en la categoría "01"
+
+Paso: comprueba que todas las verificaciones hayan sido hechas con éxito (columna I) y pulsa "Incorporar datos"
