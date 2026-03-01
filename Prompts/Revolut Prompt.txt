@@ -44,13 +44,14 @@ There should be here a two column table with two fields: "Fecha" and "Saldo". "F
 Paso: Aprieta el botón "Copiar transacciones" abajo, vuelve al resumen, seleccione la celda B11 y utilice el comando "Pegar"
 
 There should be a table containing the contents of the statement after several transformations applied. These are the transformations:
-0. remove any rows where field number 9 has value "REVERTED"
-1. Remove the fields number 1, 2, 3, 7, 8, 9, 10
-2. Replace the field number 6 with a field named "Importe" which is the original field number 6 minus field number 7
-3. Rename field number 5 as "DatosBanco"
-4. Rename the field number 4 as "Fecha"
-5. Add a field named Motivo containing the value "?"
-6. Reorder the fields: "Fecha", "Importe", "Motivo", "DatosBanco"
+0. remove any rows where field number 4 is empty
+1. Remove the fields number 1, 2, 3, 8, 9, 10 (first field is field number 1)
+2. Replace the field that was originally number 6 with a field named "Importe" which is the original field number 6 minus the value in field that was originally number 7
+3. Remove the field that was originally field number 7
+4. Rename field that was originally number 5 as "DatosBanco"
+5. Rename the field that was originally number 4 as "Fecha"
+6. Add a field named Motivo containing the value "?"
+7. Reorder the fields: "Fecha", "Importe", "Motivo", "DatosBanco"
 
 Add just before the table a button "Copiar transacciones" that copies the resulting table as TSV, excluding the header row.
 
