@@ -330,6 +330,23 @@
         return rounded.toFixed(2); // dot decimal by default
     }
 
+    function isTimestampAfter(a, b) {
+        const aStr = String(a ?? "").trim();
+        const bStr = String(b ?? "").trim();
+        if (!aStr) return false;
+        if (!bStr) return true;
+
+        const normA = aStr.includes("T") ? aStr : aStr.replace(" ", "T");
+        const normB = bStr.includes("T") ? bStr : bStr.replace(" ", "T");
+        const aMs = Date.parse(normA);
+        const bMs = Date.parse(normB);
+
+        // Fall back to lexical compare for unexpected timestamp formats.
+        if (Number.isFinite(aMs) && Number.isFinite(bMs)) return aMs > bMs;
+        return aStr > bStr;
+    }
+
+
     async function copyToClipboard(text) {
         try {
             await navigator.clipboard.writeText(text);
@@ -394,7 +411,10 @@
             setCopiedTx(false);
 
             try{
-                const rows = parseCSV(csvText);
+                const parsedRows = parseCSV(csvText);
+
+                // First row is always header (language can vary), so always skip it.
+                const rows = parsedRows.slice(1);
 
                 if (!rows.length) {
                     setProcessed(null);
@@ -411,11 +431,28 @@
                     return;
                 }
 
-                // Saldo: fourth field of the last row (Fecha) and last field (Saldo)
-                const lastRow = filtered[filtered.length - 1];
-                const saldoFecha = removeTimePart(lastRow[3] ?? "");
-                const saldoValorRaw = lastRow[lastRow.length - 1] ?? "";
-                const saldoValor = formatMoneyDot(toNumberLoose(saldoValorRaw));
+                // Saldo: for each product, use the latest row by completed timestamp (#4),
+                // then sum all those per-product ending balances.
+                const latestByProduct = new Map(); // product -> row
+                filtered.forEach((r) => {
+                    const product = String(r[1] ?? "").trim() || "(sin producto)"; // #2
+                    const currentTs = String(r[3] ?? "").trim(); // #4
+                    const previous = latestByProduct.get(product);
+                    if (!previous || isTimestampAfter(currentTs, previous[3])) {
+                        latestByProduct.set(product, r);
+                    }
+                });
+
+                let latestOverallTs = "";
+                let saldoTotal = 0;
+                latestByProduct.forEach((row) => {
+                    const ts = String(row[3] ?? "").trim();
+                    if (isTimestampAfter(ts, latestOverallTs)) latestOverallTs = ts;
+                    saldoTotal += toNumberLoose(row[row.length - 1] ?? "0"); // last field = Balance
+                });
+
+                const saldoFecha = removeTimePart(latestOverallTs);
+                const saldoValor = formatMoneyDot(saldoTotal);
 
                 // Transactions transformations:
                 // 0. remove rows where field #4 is empty -> already done (filtered)
