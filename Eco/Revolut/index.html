@@ -9,12 +9,19 @@
     <script crossorigin src="https://unpkg.com/react@18/umd/react.development.js"></script>
     <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <script type="importmap">
+        {
+            "imports": {
+                "react": "https://esm.sh/react@18",
+                "react/jsx-runtime": "https://esm.sh/react@18/jsx-runtime"
+            }
+        }
+    </script>
 
     <style>
         :root{
             --bg:#0b1020;
             --card:#121a33;
-            --card2:#0f1730;
             --text:#e8ecff;
             --muted:#a9b2da;
             --border:#2a3563;
@@ -242,7 +249,6 @@
             font-size: 12px;
             font-weight: 700;
         }
-        .spacer{height: 6px}
     </style>
 </head>
 
@@ -251,10 +257,10 @@
     <div id="root"></div>
 </div>
 
-<script type="text/babel">
-    const { useMemo, useRef, useState } = React;
+<script type="text/babel" data-type="module">
+    const { useMemo, useState } = React;
 
-    // --- CSV parsing with quote support (handles commas and newlines inside quotes) ---
+    // --- CSV parsing with quote support (handles commas/newlines inside quotes) ---
     function parseCSV(text) {
         const rows = [];
         let row = [];
@@ -262,7 +268,8 @@
         let inQuotes = false;
 
         // Normalize line endings; keep \n (we handle them explicitly)
-        const s = text.replace(/\r\n/g, "\n").replace(/\r/g, "\n");
+        let s = String(text ?? "").replace(/\r\n/g, "\n").replace(/\r/g, "\n");
+        if (s.charCodeAt(0) === 0xfeff) s = s.slice(1); // Strip UTF-8 BOM.
 
         for (let i = 0; i < s.length; i++) {
             const c = s[i];
@@ -315,11 +322,25 @@
     }
 
     function toNumberLoose(s) {
-        // Assume: dot decimal separator, no thousands separators (per requirement).
         const t = String(s ?? "").trim();
         if (!t) return 0;
-        const n = Number(t);
+
+        let normalized = t
+            .replace(/\u00a0/g, "")
+            .replace(/\s+/g, "")
+            .replace(/[€$£]/g, "");
+        if (normalized.includes(",") && !normalized.includes(".")) {
+            normalized = normalized.replace(/,/g, ".");
+        } else if (normalized.includes(",") && normalized.includes(".")) {
+            normalized = normalized.replace(/,/g, "");
+        }
+
+        const n = Number(normalized);
         return Number.isFinite(n) ? n : 0;
+    }
+
+    function tsvCell(value) {
+        return String(value ?? "").replace(/\t/g, " ").replace(/\r?\n/g, " ");
     }
 
     function formatMoneyDot(n) {
@@ -379,8 +400,6 @@
         const [processing, setProcessing] = useState(false);
         const [copiedSaldo, setCopiedSaldo] = useState(false);
         const [copiedTx, setCopiedTx] = useState(false);
-
-        const fileInputRef = useRef(null);
 
         function onFileChange(e){
             const file = e.target.files && e.target.files[0];
@@ -454,13 +473,6 @@
                 const saldoFecha = removeTimePart(latestOverallTs);
                 const saldoValor = formatMoneyDot(saldoTotal);
 
-                // Transactions transformations:
-                // 0. remove rows where field #4 is empty -> already done (filtered)
-                // 1. Remove fields #1,2,3,8,9,10
-                // We'll operate on original indices:
-                // original #4 -> Fecha
-                // original #5 -> DatosBanco
-                // original #6, #7 -> amount components => Importe = #6 - #7
                 const txRows = filtered.map(r => {
                     const fecha = removeTimePart(r[3] ?? "");          // #4
                     const datosBanco = String(r[4] ?? "");             // #5
@@ -493,14 +505,14 @@
 
         const saldoTSV = useMemo(() => {
             if (!processed) return "";
-            return `${processed.saldoFecha}\t${processed.saldoValor}`;
+            return `${tsvCell(processed.saldoFecha)}\t${tsvCell(processed.saldoValor)}`;
         }, [processed]);
 
         const txTSV = useMemo(() => {
             if (!processed) return "";
             // Order: Fecha, Importe, Motivo, DatosBanco
             return processed.txRows
-                .map(r => `${r.Fecha}\t${r.Importe}\t${r.Motivo}\t${r.DatosBanco}`)
+                .map(r => `${tsvCell(r.Fecha)}\t${tsvCell(r.Importe)}\t${tsvCell(r.Motivo)}\t${tsvCell(r.DatosBanco)}`)
                 .join("\n");
         }, [processed]);
 
@@ -588,24 +600,27 @@
                     </div>
 
                     <div className="row">
-                        <label>Extracto Revolut</label>
+                        <label id="revolutCsvTextLabel" htmlFor="revolutCsvText">Extracto Revolut</label>
                         <p className="hint">
                             Puedes pegar el CSV aquí, o subir un fichero <span className="pill">.csv</span>.
                             El contenido se lee como <span className="pill">UTF-8</span> y se coloca en el campo.
                         </p>
 
-                        {/* Upload button above the table (the transformation table comes later) */}
+                        <label id="revolutCsvFileLabel" htmlFor="revolutCsvFile">Subir fichero CSV</label>
                         <input
-                            ref={fileInputRef}
+                            id="revolutCsvFile"
                             type="file"
                             accept=".csv,text/csv"
                             onChange={onFileChange}
+                            aria-labelledby="revolutCsvFileLabel"
                             aria-label="Subir extracto CSV"
                         />
 
                         <textarea
+                            id="revolutCsvText"
                             value={csvText}
                             onChange={(e)=>setCsvText(e.target.value)}
+                            aria-labelledby="revolutCsvTextLabel"
                             placeholder={'Pega aquí el CSV de Revolut...'}
                         />
 
@@ -751,8 +766,11 @@
         );
     }
 
-    const root = ReactDOM.createRoot(document.getElementById("root"));
-    root.render(<App />);
+    const rootEl = document.getElementById("root");
+    if (rootEl) {
+        const root = ReactDOM.createRoot(rootEl);
+        root.render(<App />);
+    }
 </script>
 </body>
 </html>
