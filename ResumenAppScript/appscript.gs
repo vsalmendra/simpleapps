@@ -6,6 +6,16 @@ const SALDOS_DATA_COLUMNS = 3;
 const SALDOS_SOURCE_COLUMNS = 2;
 const CAPACITY_BUFFER_ROWS = 10;
 
+function onOpen() {
+    SpreadsheetApp.getUi()
+        .createMenu('=RESUMEN=')
+        .addItem('Incorporar datos', 'addNewData')
+        .addItem('Aplicar reglas', 'processDataByRules')
+        .addToUi();
+
+    refreshResumenCsvLinkInCell();
+}
+
 /**
  * Processes data based on specific word-matching rules.
  */
@@ -310,3 +320,26 @@ function findValuesToCopy(origRange, numRelevantColumns) {
 function isBlankRow(row) {
     return row.every(v => v === '' || v === null);
 }
+
+function buildSheetCsvExportUrl_(spreadsheetId, sheetId) {
+    return `https://docs.google.com/spreadsheets/d/${spreadsheetId}/export?format=csv&gid=${sheetId}`;
+}
+
+/**
+ * Regenerates and writes the Resumen CSV link into Resumen!D1.
+ */
+function refreshResumenCsvLinkInCell() {
+    const sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName('Resumen');
+    if (!sheet) {
+        return;
+    }
+
+    setSheetCsvLinkInCell_(sheet, 'D1', 'Download as CSV');
+}
+
+function setSheetCsvLinkInCell_(sheet, a1Notation, linkText) {
+    const url = buildSheetCsvExportUrl_(SpreadsheetApp.getActiveSpreadsheet().getId(), sheet.getSheetId());
+    const formula = `=HYPERLINK("${url}","${linkText}")`;
+    sheet.getRange(a1Notation).setFormula(formula);
+}
+
