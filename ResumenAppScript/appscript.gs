@@ -11,8 +11,12 @@ function onOpen() {
         .createMenu('=RESUMEN=')
         .addItem('Incorporar datos', 'addNewData')
         .addItem('Aplicar reglas', 'processDataByRules')
+        .addItem('Generar cuenta de gastos', 'generateExpenseAccountPivot')
         .addToUi();
 
+    syncRegistroContableNamedRange_();
+    syncSaldosNamedRanges_();
+    syncCuentasAndReglasNamedRanges_();
     refreshResumenCsvLinkInCell();
 }
 
@@ -33,12 +37,13 @@ function processDataByRules() {
 
     const dataValues = dataRange.getValues();
     const rulesValues = rulesRange.getValues();
+    const rulesBody = rulesValues.slice(1);
 
     // Remove header from data
     const dataBody = dataValues.slice(1);
 
     // 2. Prepare Rules (Clean them once for efficiency)
-    const preparedRules = rulesValues
+    const preparedRules = rulesBody
         .filter(row => row[0] !== "") // Skip empty rules
         .map(row => {
             return {
@@ -341,5 +346,170 @@ function setSheetCsvLinkInCell_(sheet, a1Notation, linkText) {
     const url = buildSheetCsvExportUrl_(SpreadsheetApp.getActiveSpreadsheet().getId(), sheet.getSheetId());
     const formula = `=HYPERLINK("${url}","${linkText}")`;
     sheet.getRange(a1Notation).setFormula(formula);
+}
+
+/**
+ * Builds a pivot table for expense reporting from RegistroContableRange.
+ */
+function generateExpenseAccountPivot() {
+    const ss = SpreadsheetApp.getActiveSpreadsheet();
+    const sourceRange = ss.getRangeByName('RegistroContableRange');
+    const yearResumenRange = ss.getRangeByName('YearResumen');
+    const divisaResumenRange = ss.getRangeByName('DivisaResumen');
+
+    if (!sourceRange) {
+        throw new Error('No se encontró el rango con nombre "RegistroContableRange".');
+    }
+    if (!yearResumenRange) {
+        throw new Error('No se encontró el rango con nombre "YearResumen".');
+    }
+    if (!divisaResumenRange) {
+        throw new Error('No se encontró el rango con nombre "DivisaResumen".');
+    }
+
+    const headers = sourceRange.offset(0, 0, 1, sourceRange.getNumColumns()).getValues()[0];
+    const divisaResumen = String(divisaResumenRange.getDisplayValue() || '').trim();
+    const yearResumen = String(yearResumenRange.getDisplayValue() || '').trim();
+
+    if (!divisaResumen) {
+        throw new Error('DivisaResumen está vacío.');
+    }
+    if (!yearResumen) {
+        throw new Error('YearResumen está vacío.');
+    }
+
+    const categoriaCol = findColumnIndexByHeader_(headers, 'Categoria');
+    const motivoCol = findColumnIndexByHeader_(headers, 'Motivo');
+    const anoCol = findColumnIndexByHeader_(headers, 'ano', 'año');
+    const mesCol = findColumnIndexByHeader_(headers, 'mes');
+    findColumnIndexByHeader_(headers, 'Importe'); // Required field check
+    const valueCol = findColumnIndexByHeader_(headers, divisaResumen);
+
+    const targetSheetName = 'Cuenta de gastos';
+    let targetSheet = ss.getSheetByName(targetSheetName);
+    if (!targetSheet) {
+        targetSheet = ss.insertSheet(targetSheetName);
+    }
+    targetSheet.clear();
+
+    targetSheet
+        .getRange('A1')
+        .setValue('Cuenta de gastos')
+        .setFontWeight('bold')
+        .setFontSize(16);
+
+    const pivotAnchor = targetSheet.getRange('A3');
+    const pivotTable = pivotAnchor.createPivotTable(sourceRange);
+
+    const categoriaGroup = pivotTable.addRowGroup(categoriaCol);
+    categoriaGroup.showTotals(true);
+    categoriaGroup.sortAscending();
+
+    const motivoGroup = pivotTable.addRowGroup(motivoCol);
+    motivoGroup.showTotals(true);
+    motivoGroup.sortAscending();
+
+    const anoGroup = pivotTable.addColumnGroup(anoCol);
+    anoGroup.showTotals(false);
+    anoGroup.sortAscending();
+
+    const mesGroup = pivotTable.addColumnGroup(mesCol);
+    mesGroup.sortAscending();
+
+    pivotTable.addPivotValue(valueCol, SpreadsheetApp.PivotTableSummarizeFunction.SUM);
+
+    const yearCriteria = SpreadsheetApp.newFilterCriteria()
+        .setVisibleValues([yearResumen])
+        .build();
+    pivotTable.addFilter(anoCol, yearCriteria);
+
+    SpreadsheetApp.flush();
+    formatPivotNumbers_(targetSheet, pivotAnchor.getRow(), pivotAnchor.getColumn());
+    setSheetCsvLinkInCell_(targetSheet, 'C1', 'Download as CSV');
+    protectSheetFromUserEdits_(targetSheet);
+}
+
+function findColumnIndexByHeader_(headers, primaryName) {
+    const aliases = Array.prototype.slice.call(arguments, 1);
+    const targetNames = [primaryName].concat(aliases).map(normalizeHeader_);
+
+    for (let i = 0; i < headers.length; i++) {
+        const normalizedHeader = normalizeHeader_(headers[i]);
+        if (targetNames.indexOf(normalizedHeader) !== -1) {
+            return i + 1; // 1-based column index for pivot APIs
+        }
+    }
+
+    throw new Error(`No se encontró la columna "${primaryName}" en RegistroContableRange.`);
+}
+
+function normalizeHeader_(value) {
+    return String(value || '')
+        .normalize('NFD')
+        .replace(new RegExp('[\\u0300-\\u036f]', 'g'), '')
+        .trim()
+        .toLowerCase();
+}
+
+function formatPivotNumbers_(sheet, startRow, startCol) {
+    const rowCount = sheet.getMaxRows() - startRow + 1;
+    const colCount = sheet.getMaxColumns() - startCol + 1;
+
+    // Format a large area to avoid missing numeric cells as pivot dimensions change.
+    sheet.getRange(startRow, startCol, rowCount, colCount).setNumberFormat('0');
+}
+
+/**
+ * Keeps RegistroContableRange aligned with the actual RegistroContable table.
+ */
+function syncRegistroContableNamedRange_() {
+    const ss = SpreadsheetApp.getActiveSpreadsheet();
+    const sheet = ss.getSheetByName('RegistroContable');
+    if (!sheet) {
+        return;
+    }
+
+    const anchor = sheet.getRange('A1');
+    if (!anchor.getValue()) {
+        return;
+    }
+
+    ss.setNamedRange('RegistroContableRange', anchor.getDataRegion());
+}
+
+function syncSaldosNamedRanges_() {
+    syncNamedRangeToAnchorDataRegion_('SaldosRange', 'Saldos', 'A1');
+    syncNamedRangeToAnchorDataRegion_('SaldosEntradaRange', 'Entrada de datos', 'A5');
+}
+
+function syncCuentasAndReglasNamedRanges_() {
+    syncNamedRangeToAnchorDataRegion_('CuentasRange', 'Cuentas', 'A1');
+    syncNamedRangeToAnchorDataRegion_('ReglasRange', 'Reglas de categorización', 'A1');
+}
+
+function syncNamedRangeToAnchorDataRegion_(rangeName, sheetName, anchorA1) {
+    const ss = SpreadsheetApp.getActiveSpreadsheet();
+    const sheet = ss.getSheetByName(sheetName);
+    if (!sheet) {
+        return;
+    }
+
+    const anchor = sheet.getRange(anchorA1);
+    if (!anchor.getValue()) {
+        return;
+    }
+
+    ss.setNamedRange(rangeName, anchor.getDataRegion());
+}
+
+function protectSheetFromUserEdits_(sheet) {
+    const description = 'AUTO_PROTECT_CUENTA_GASTOS';
+    const protections = sheet
+        .getProtections(SpreadsheetApp.ProtectionType.SHEET)
+        .filter(p => p.getDescription() === description);
+
+    const protection = protections.length > 0 ? protections[0] : sheet.protect();
+    protection.setDescription(description);
+    protection.setWarningOnly(true);
 }
 
