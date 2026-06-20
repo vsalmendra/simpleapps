@@ -1,5 +1,11 @@
 /** @OnlyCurrentDoc */
 
+const REGISTRO_SOURCE_COLUMNS = 5;
+const REGISTRO_TARGET_DATA_COLUMNS = 6;
+const SALDOS_DATA_COLUMNS = 3;
+const SALDOS_SOURCE_COLUMNS = 2;
+const CAPACITY_BUFFER_ROWS = 10;
+
 /**
  * Processes data based on specific word-matching rules.
  */
@@ -98,8 +104,8 @@ function addNewData() {
     const srcRangeOrig = ss.getRangeByName('EntradaDeDatosRange');
     const srcRange = srcRangeOrig.offset(1, 0, srcRangeOrig.getNumRows() - 1, srcRangeOrig.getNumColumns());
     if (!srcRange) throw new Error('No se encontró el rango con nombre "EntradaDeDatosRange".');
-    const srcValues = srcRange.getValues();
     const srcNumCols = srcRange.getNumColumns();
+    const srcValues = srcRange.getValues();
 
     // Find how many contiguous non-blank rows from the top
     let rowsToCopy = 0;
@@ -112,7 +118,16 @@ function addNewData() {
         return;
     }
 
-    const dataToCopy = srcValues.slice(0, rowsToCopy);
+    const dataToCopy = srcValues
+        .slice(0, rowsToCopy)
+        .map(row => {
+            const paddedRow = new Array(REGISTRO_SOURCE_COLUMNS).fill('');
+            const colsToCopy = Math.min(srcNumCols, REGISTRO_SOURCE_COLUMNS);
+            for (let c = 0; c < colsToCopy; c++) {
+                paddedRow[c] = row[c];
+            }
+            return paddedRow;
+        });
 
     let dstRangeOrig = ss.getRangeByName('RegistroContableRange');
     let dstRange = dstRangeOrig.offset(1, 0, dstRangeOrig.getNumRows() - 1, dstRangeOrig.getNumColumns());
@@ -120,47 +135,57 @@ function addNewData() {
 
     const dstNumCols = dstRange.getNumColumns();
 
-    if(dstNumCols < srcNumCols) {
+    if(dstNumCols < REGISTRO_TARGET_DATA_COLUMNS) {
         throw new Error('Wrong number of columns');
     }
 
-    const registroSetup = ensureCapacityInNamedRange('RegistroContableRange', srcNumCols, rowsToCopy, 10);
+    const registroSetup = ensureCapacityInNamedRange(
+        'RegistroContableRange',
+        REGISTRO_TARGET_DATA_COLUMNS,
+        rowsToCopy,
+        CAPACITY_BUFFER_ROWS
+    );
     dstRange = registroSetup.dataRange;
     const firstBlankRowIdx = registroSetup.firstBlankRowIdx;
 
     // Write transaction values
     dstRange
-        .offset(firstBlankRowIdx, 0, rowsToCopy, srcNumCols)
+        .offset(firstBlankRowIdx, 0, rowsToCopy, REGISTRO_SOURCE_COLUMNS)
         .setValues(dataToCopy);
 
     // Write bank account on the next column
     const accountId = ss.getRangeByName('CuentaEntradaDatosID').getValue();
     dstRange
-        .offset(firstBlankRowIdx, srcNumCols, rowsToCopy, 1)
+        .offset(firstBlankRowIdx, REGISTRO_SOURCE_COLUMNS, rowsToCopy, 1)
         .setValue(accountId);
 
     // Now copy the balance rows
     const balanceEntryRangeOrig = ss.getRangeByName('SaldosEntradaRange');
     const balanceEntryRange =  balanceEntryRangeOrig.offset(1, 0, balanceEntryRangeOrig.getNumRows() - 1, balanceEntryRangeOrig.getNumColumns());
 
-    const balanceValuesToCopy = findValuesToCopy(balanceEntryRange, 2);
+    const balanceValuesToCopy = findValuesToCopy(balanceEntryRange, SALDOS_SOURCE_COLUMNS);
 
-    const saldosSetup = ensureCapacityInNamedRange('SaldosRange', 2, balanceValuesToCopy.length, 10);
+    const saldosSetup = ensureCapacityInNamedRange(
+        'SaldosRange',
+        SALDOS_DATA_COLUMNS,
+        balanceValuesToCopy.length,
+        CAPACITY_BUFFER_ROWS
+    );
     const balancesRange = saldosSetup.dataRange;
     const firstBlankBalanceRow = saldosSetup.firstBlankRowIdx;
 
     balancesRange
-        .offset(firstBlankBalanceRow, 0, balanceValuesToCopy.length, 2)
+        .offset(firstBlankBalanceRow, 0, balanceValuesToCopy.length, SALDOS_SOURCE_COLUMNS)
         .setValues(balanceValuesToCopy);
 
     // Now set balances accountId
     balancesRange
-        .offset(firstBlankBalanceRow, 2, balanceValuesToCopy.length, 1)
+        .offset(firstBlankBalanceRow, SALDOS_SOURCE_COLUMNS, balanceValuesToCopy.length, 1)
         .setValue(accountId);
 
     // Now clear source ranges
-    balanceEntryRange.offset(0, 0, balanceValuesToCopy.length, 2).clearContent();
-    srcRange.clearContent();
+    balanceEntryRange.offset(0, 0, balanceValuesToCopy.length, SALDOS_SOURCE_COLUMNS).clearContent();
+    srcRange.offset(0, 0, rowsToCopy, REGISTRO_SOURCE_COLUMNS).clearContent();
 
     ss.getRangeByName('CuentaEntradaDatosID').clearContent();
 }
@@ -203,7 +228,15 @@ function ensureCapacityInNamedRange(rangeName, relevantColumnsNumber, rowsToWrit
 
     let firstBlankRowIdx = findFirstBlankRowIdx(dataValues, relevantColumnsNumber);
     if (firstBlankRowIdx === -1) {
-        firstBlankRowIdx = dataValues.length;
+        // Table is full: create one writable row while preserving the previous last-row data.
+        createWritableRowAtEnd(rangeName, relevantColumnsNumber);
+        tableRange = ss.getRangeByName(rangeName);
+        dataRange = tableRange.offset(1, 0, tableRange.getNumRows() - 1, tableRange.getNumColumns());
+        dataValues = dataRange.getValues();
+        firstBlankRowIdx = findFirstBlankRowIdx(dataValues, relevantColumnsNumber);
+        if (firstBlankRowIdx === -1) {
+            firstBlankRowIdx = dataValues.length;
+        }
     }
 
     const minRequiredRows = rowsToWrite + bufferRows;
@@ -218,6 +251,35 @@ function ensureCapacityInNamedRange(rangeName, relevantColumnsNumber, rowsToWrit
         dataRange: dataRange,
         firstBlankRowIdx: firstBlankRowIdx
     };
+}
+
+/**
+ * When a table is fully occupied, insert one row before its last row and move
+ * the last row up so the table ends with a writable blank row.
+ */
+function createWritableRowAtEnd(rangeName, dataColumnsNumber) {
+    const ss = SpreadsheetApp.getActiveSpreadsheet();
+    const targetRange = ss.getRangeByName(rangeName);
+    if (!targetRange) {
+        throw new Error(`No se encontró el rango con nombre "${rangeName}".`);
+    }
+
+    const sheet = targetRange.getSheet();
+    const startCol = targetRange.getColumn();
+    const numCols = targetRange.getNumColumns();
+    if (!Number.isInteger(dataColumnsNumber) || dataColumnsNumber < 1 || dataColumnsNumber > numCols) {
+        throw new Error(`Invalid dataColumnsNumber for range "${rangeName}".`);
+    }
+    const lastRowInRange = targetRange.getRow() + targetRange.getNumRows() - 1;
+
+    sheet.insertRowsBefore(lastRowInRange, 1);
+
+    // Old last row shifted down by 1; copy it up and clear the old location.
+    const oldLastRowAfterInsert = lastRowInRange + 1;
+    const sourceRange = sheet.getRange(oldLastRowAfterInsert, startCol, 1, dataColumnsNumber);
+    const destinationRange = sheet.getRange(lastRowInRange, startCol, 1, dataColumnsNumber);
+    destinationRange.setValues(sourceRange.getValues());
+    sourceRange.clearContent();
 }
 
 function findFirstBlankRowIdx(range, relevantColumnsNumber) {
