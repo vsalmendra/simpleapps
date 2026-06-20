@@ -26,7 +26,7 @@ function processDataByRules() {
         .filter(row => row[0] !== "") // Skip empty rules
         .map(row => {
             return {
-                words: cleanText(row[0]).split(/\s+/).filter(w => w.length > 0),
+                words: cleanText(row[0]).split(new RegExp('\\s+')).filter(w => w.length > 0),
                 valToCol1: row[1],
                 valToCol4: row[2]
             };
@@ -64,9 +64,9 @@ function cleanText(text) {
     if (typeof text !== 'string') text = text.toString();
 
     return text
-        .normalize("NFD").replace(/[\u0300-\u036f]/g, "") // Remove diacritics
-        .replace(/[0-9]/g, "")                           // Remove numbers
-        .replace(/[^a-zA-Z]/g, " ")                      // Non-alphanumeric to spaces
+        .normalize("NFD").replace(new RegExp('[\\u0300-\\u036f]', 'g'), "") // Remove diacritics
+        .replace(new RegExp('[0-9]', 'g'), "")           // Remove numbers
+        .replace(new RegExp('[^a-zA-Z]', 'g'), " ")      // Non-alphanumeric to spaces
         .toLowerCase()
         .trim();
 }
@@ -75,7 +75,7 @@ function cleanText(text) {
  * Checks if the array of ruleWords appears in the targetText in the correct order.
  */
 function isMatchInOrder(targetText, ruleWords) {
-    const targetWords = targetText.split(/\s+/).filter(w => w.length > 0);
+    const targetWords = targetText.split(new RegExp('\\s+')).filter(w => w.length > 0);
 
     let currentIdx = 0;
     for (let word of ruleWords) {
@@ -114,28 +114,19 @@ function addNewData() {
 
     const dataToCopy = srcValues.slice(0, rowsToCopy);
 
-    const dstRangeOrig = ss.getRangeByName('RegistroContableRange');
-    const dstRange = dstRangeOrig.offset(1, 0, dstRangeOrig.getNumRows() - 1, dstRangeOrig.getNumColumns());
+    let dstRangeOrig = ss.getRangeByName('RegistroContableRange');
+    let dstRange = dstRangeOrig.offset(1, 0, dstRangeOrig.getNumRows() - 1, dstRangeOrig.getNumColumns());
     if (!dstRange) throw new Error('No se encontró el rango con nombre "RegistroContable".');
 
-    const dstValues = dstRange.getValues();
     const dstNumCols = dstRange.getNumColumns();
 
     if(dstNumCols < srcNumCols) {
         throw new Error('Wrong number of columns');
     }
 
-    // Find first completely blank row within the destination table
-    let firstBlankRowIdx = findFirstBlankRowIdx(dstValues, srcNumCols);
-    if (firstBlankRowIdx === -1) {
-        throw new Error('No hay filas vacías en RegistroContable para pegar los datos.');
-    }
-
-    // Check space available
-    const remainingRows = dstValues.length - firstBlankRowIdx;
-    if (rowsToCopy > remainingRows) {
-        throw new Error(`No hay suficiente espacio en "RegistroContable". Filas a copiar: ${rowsToCopy}, espacio disponible: ${remainingRows}.`);
-    }
+    const registroSetup = ensureCapacityInNamedRange('RegistroContableRange', srcNumCols, rowsToCopy, 10);
+    dstRange = registroSetup.dataRange;
+    const firstBlankRowIdx = registroSetup.firstBlankRowIdx;
 
     // Write transaction values
     dstRange
@@ -154,15 +145,9 @@ function addNewData() {
 
     const balanceValuesToCopy = findValuesToCopy(balanceEntryRange, 2);
 
-    const balancesRangeOrig = ss.getRangeByName('SaldosRange');
-    const balancesRange = balancesRangeOrig.offset(1, 0, balancesRangeOrig.getNumRows() - 1, balancesRangeOrig.getNumColumns());
-
-    const balancesValues = balancesRange.getValues();
-
-    const firstBlankBalanceRow = findFirstBlankRowIdx(balancesValues, 2);
-    if (firstBlankBalanceRow === -1) {
-        throw new Error('No hay filas vacías en Balances para pegar los datos.');
-    }
+    const saldosSetup = ensureCapacityInNamedRange('SaldosRange', 2, balanceValuesToCopy.length, 10);
+    const balancesRange = saldosSetup.dataRange;
+    const firstBlankBalanceRow = saldosSetup.firstBlankRowIdx;
 
     balancesRange
         .offset(firstBlankBalanceRow, 0, balanceValuesToCopy.length, 2)
@@ -178,6 +163,61 @@ function addNewData() {
     srcRange.clearContent();
 
     ss.getRangeByName('CuentaEntradaDatosID').clearContent();
+}
+
+/**
+ * Inserts rows before the last row of a named range using native sheet behavior.
+ *
+ * @param {string} rangeName Named range to extend.
+ * @param {number} rowsToInsert Number of rows to insert.
+ */
+function insertRowsBeforeLastRowInNamedRange(rangeName, rowsToInsert) {
+    if (!Number.isInteger(rowsToInsert) || rowsToInsert < 1) {
+        throw new Error('rowsToInsert must be an integer greater than 0.');
+    }
+
+    const ss = SpreadsheetApp.getActiveSpreadsheet();
+    const targetRange = ss.getRangeByName(rangeName);
+    if (!targetRange) {
+        throw new Error(`No se encontró el rango con nombre "${rangeName}".`);
+    }
+
+    const sheet = targetRange.getSheet();
+    const lastRowInRange = targetRange.getRow() + targetRange.getNumRows() - 1;
+    sheet.insertRowsBefore(lastRowInRange, rowsToInsert);
+}
+
+/**
+ * Ensures there are at least rowsToWrite + bufferRows available from the first writable row.
+ * Returns the refreshed writable range and insertion index.
+ */
+function ensureCapacityInNamedRange(rangeName, relevantColumnsNumber, rowsToWrite, bufferRows) {
+    const ss = SpreadsheetApp.getActiveSpreadsheet();
+    let tableRange = ss.getRangeByName(rangeName);
+    if (!tableRange) {
+        throw new Error(`No se encontró el rango con nombre "${rangeName}".`);
+    }
+
+    let dataRange = tableRange.offset(1, 0, tableRange.getNumRows() - 1, tableRange.getNumColumns());
+    let dataValues = dataRange.getValues();
+
+    let firstBlankRowIdx = findFirstBlankRowIdx(dataValues, relevantColumnsNumber);
+    if (firstBlankRowIdx === -1) {
+        firstBlankRowIdx = dataValues.length;
+    }
+
+    const minRequiredRows = rowsToWrite + bufferRows;
+    const remainingRows = dataValues.length - firstBlankRowIdx;
+    if (remainingRows < minRequiredRows) {
+        insertRowsBeforeLastRowInNamedRange(rangeName, minRequiredRows);
+        tableRange = ss.getRangeByName(rangeName);
+        dataRange = tableRange.offset(1, 0, tableRange.getNumRows() - 1, tableRange.getNumColumns());
+    }
+
+    return {
+        dataRange: dataRange,
+        firstBlankRowIdx: firstBlankRowIdx
+    };
 }
 
 function findFirstBlankRowIdx(range, relevantColumnsNumber) {
