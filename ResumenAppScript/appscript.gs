@@ -17,7 +17,126 @@ function onOpen() {
     syncRegistroContableNamedRange_();
     syncSaldosNamedRanges_();
     syncCuentasAndReglasNamedRanges_();
+    setupCurrencyConvertorTable_();
     refreshResumenCsvLinkInCell();
+}
+
+function setupCurrencyConvertorTable_() {
+    const ss = SpreadsheetApp.getActiveSpreadsheet();
+    const startDateRange = ss.getRangeByName('StartDate');
+    const endDateRange = ss.getRangeByName('EndDate');
+
+    if (!startDateRange || !endDateRange) {
+        throw new Error('Named ranges "StartDate" and "EndDate" are required.');
+    }
+
+    const startDate = parseNamedDateValue_(startDateRange.getValue(), 'StartDate');
+    const endDate = parseNamedDateValue_(endDateRange.getValue(), 'EndDate');
+    if (startDate.getTime() > endDate.getTime()) {
+        throw new Error('StartDate must be less than or equal to EndDate.');
+    }
+
+    const sheetName = 'CurrencyConvertor';
+    const headers = [
+        'Date',
+        'HUF',
+        'RON',
+        'USD',
+        'CHF',
+        'EUR2HUF',
+        'EUR2RON',
+        'EUR2USD',
+        'EUR2CHF',
+        'HUF2EUR',
+        'RON2EUR',
+        'USD2EUR',
+        'CHF2EUR'
+    ];
+
+    let sheet = ss.getSheetByName(sheetName);
+    if (!sheet) {
+        sheet = ss.insertSheet(sheetName);
+    }
+
+    const dates = buildDateSeries_(startDate, endDate);
+    const tableRows = dates.length + 1;
+    const tableCols = headers.length;
+
+    ensureSheetSize_(sheet, tableRows, tableCols);
+
+    sheet.getRange(1, 1, 1, tableCols).setValues([headers]);
+
+    if (dates.length > 0) {
+        const isoDateTextValues = dates.map(d => [formatIsoDateText_(d)]);
+        sheet.getRange(2, 1, dates.length, 1).setNumberFormat('@');
+        sheet.getRange(2, 1, dates.length, 1).setValues(isoDateTextValues);
+
+        sheet
+            .getRange(2, 2, dates.length, 4)
+            .setFormulaR1C1('=INDEX(GOOGLEFINANCE("CURRENCY:EUR"&R1C,"price",RC1),2,2)');
+
+        sheet.getRange(2, 6, 1, 4).setFormulaR1C1('=RC[-4]');
+        if (dates.length > 1) {
+            sheet.getRange(3, 6, dates.length - 1, 4).setFormulaR1C1('=IFNA(RC[-4],R[-1]C)');
+        }
+
+        sheet.getRange(2, 10, dates.length, 4).setFormulaR1C1('=1/RC[-4]');
+    }
+
+    clearRowsBelowTable_(sheet, tableRows, tableCols);
+    ss.setNamedRange('CurrenciesConvertorTable', sheet.getRange(1, 1, tableRows, tableCols));
+}
+
+function parseNamedDateValue_(value, rangeName) {
+    const isDateObject = Object.prototype.toString.call(value) === '[object Date]';
+    if (isDateObject && !Number.isNaN(value.getTime())) {
+        return new Date(value.getFullYear(), value.getMonth(), value.getDate());
+    }
+
+    const parsed = new Date(String(value || '').trim());
+    if (Number.isNaN(parsed.getTime())) {
+        throw new Error(`Invalid date value in named range "${rangeName}".`);
+    }
+
+    return new Date(parsed.getFullYear(), parsed.getMonth(), parsed.getDate());
+}
+
+function buildDateSeries_(startDate, endDate) {
+    const dates = [];
+    const cursor = new Date(startDate.getTime());
+
+    while (cursor.getTime() <= endDate.getTime()) {
+        dates.push(new Date(cursor.getTime()));
+        cursor.setDate(cursor.getDate() + 1);
+    }
+
+    return dates;
+}
+
+function formatIsoDateText_(date) {
+    const year = String(date.getFullYear());
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+}
+
+function ensureSheetSize_(sheet, minRows, minCols) {
+    const currentRows = sheet.getMaxRows();
+    const currentCols = sheet.getMaxColumns();
+
+    if (currentRows < minRows) {
+        sheet.insertRowsAfter(currentRows, minRows - currentRows);
+    }
+    if (currentCols < minCols) {
+        sheet.insertColumnsAfter(currentCols, minCols - currentCols);
+    }
+}
+
+function clearRowsBelowTable_(sheet, tableRows, tableCols) {
+    const maxRows = sheet.getMaxRows();
+    if (maxRows > tableRows) {
+        sheet.getRange(tableRows + 1, 1, maxRows - tableRows, tableCols).clearContent();
+    }
 }
 
 /**
